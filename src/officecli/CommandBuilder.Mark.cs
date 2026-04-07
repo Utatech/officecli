@@ -24,6 +24,7 @@ static partial class CommandBuilder
             "Attach an in-memory advisory mark to a document element via the running watch process. " +
             "Marks are not written to the file. " +
             "Path must be in data-path format (e.g. /p[1], /slide[1]/shape[@id=N]), as emitted by watch HTML preview. " +
+            "Use the 'selected' pseudo-path to mark every currently-selected element in one call (one mark per selected path). " +
             "Inspect the rendered HTML for valid paths. Native handler query paths like /body/p[@paraId=...] will not resolve.");
         cmd.Add(fileArg);
         cmd.Add(pathArg);
@@ -55,68 +56,122 @@ static partial class CommandBuilder
                 findText = $"r\"{findText}\"";
             }
 
-            var req = new MarkRequest
-            {
-                Path = path,
-                Find = string.IsNullOrEmpty(findText) ? null : findText,
-                Color = props.TryGetValue("color", out var c) ? c : null,
-                Note = props.TryGetValue("note", out var n) ? n : null,
-                Tofix = props.TryGetValue("tofix", out var e) ? e : null,
-            };
+            // Build the common prop set once — reused for every target path
+            // when the user passes the `selected` pseudo-path.
+            var findVal = string.IsNullOrEmpty(findText) ? null : findText;
+            var colorVal = props.TryGetValue("color", out var c) ? c : null;
+            var noteVal = props.TryGetValue("note", out var n) ? n : null;
+            var tofixVal = props.TryGetValue("tofix", out var e) ? e : null;
 
-            string? id;
-            try
+            // Resolve the target path(s). For the 'selected' pseudo-path, pull the
+            // current selection from the running watch process and mark each path
+            // individually with the same prop set. Rationale: a block of selected
+            // elements is conceptually N independent marks (one per element); a
+            // single mark with N paths would need new wire-format plumbing and
+            // make find/stale semantics ambiguous.
+            List<string> targetPaths;
+            if (string.Equals(path, "selected", StringComparison.Ordinal))
             {
-                id = WatchNotifier.AddMark(file.FullName, req);
+                var selection = WatchNotifier.QuerySelection(file.FullName);
+                if (selection == null)
+                {
+                    var err = $"No watch process is running for {file.Name}. Start one with: officecli watch {file.Name}";
+                    if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(err));
+                    else Console.Error.WriteLine(err);
+                    return 1;
+                }
+                if (selection.Length == 0)
+                {
+                    var err = "No elements are currently selected. Click or drag-select in the watch browser first.";
+                    if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(err));
+                    else Console.Error.WriteLine(err);
+                    return 1;
+                }
+                targetPaths = new List<string>(selection);
             }
-            catch (MarkRejectedException rex)
+            else
             {
-                // BUG-BT-001: server rejected the request (invalid color, invalid
-                // path, etc.). Surface the actual reason instead of silently
-                // returning success with an empty id.
-                if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(rex.Message));
-                else Console.Error.WriteLine(rex.Message);
-                return 1;
+                targetPaths = new List<string> { path };
             }
-            if (id == null)
+
+            var createdIds = new List<string>();
+            var createdMarks = new List<WatchMark>();
+            foreach (var targetPath in targetPaths)
             {
-                var err = $"No watch process is running for {file.Name}. Start one with: officecli watch {file.Name}";
-                if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(err));
-                else Console.Error.WriteLine(err);
-                return 1;
+                var req = new MarkRequest
+                {
+                    Path = targetPath,
+                    Find = findVal,
+                    Color = colorVal,
+                    Note = noteVal,
+                    Tofix = tofixVal,
+                };
+
+                string? id;
+                try
+                {
+                    id = WatchNotifier.AddMark(file.FullName, req);
+                }
+                catch (MarkRejectedException rex)
+                {
+                    // BUG-BT-001: server rejected the request (invalid color, invalid
+                    // path, etc.). Surface the actual reason instead of silently
+                    // returning success with an empty id.
+                    var msg = targetPaths.Count > 1 ? $"{targetPath}: {rex.Message}" : rex.Message;
+                    if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(msg));
+                    else Console.Error.WriteLine(msg);
+                    return 1;
+                }
+                if (id == null)
+                {
+                    var err = $"No watch process is running for {file.Name}. Start one with: officecli watch {file.Name}";
+                    if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(err));
+                    else Console.Error.WriteLine(err);
+                    return 1;
+                }
+                createdIds.Add(id);
             }
 
             if (json)
             {
-                // Fetch the resolved mark (server has populated matched_text +
-                // stale by now) and return the full WatchMark object so AI
-                // consumers don't need a follow-up get-marks round-trip.
+                // Fetch the resolved marks (server has populated matched_text +
+                // stale by now) and return them so AI consumers don't need a
+                // follow-up get-marks round-trip.
                 var full = WatchNotifier.QueryMarksFull(file.FullName);
-                WatchMark? resolved = null;
                 if (full != null)
                 {
-                    for (int i = 0; i < full.Marks.Length; i++)
-                    {
-                        if (full.Marks[i].Id == id) { resolved = full.Marks[i]; break; }
-                    }
+                    var idSet = new HashSet<string>(createdIds);
+                    foreach (var m in full.Marks)
+                        if (idSet.Contains(m.Id)) createdMarks.Add(m);
                 }
-                if (resolved != null)
+                if (createdMarks.Count == targetPaths.Count)
                 {
-                    var payload = System.Text.Json.JsonSerializer.Serialize(
-                        resolved, WatchMarkJsonOptions.WatchMarkInfo);
-                    Console.WriteLine(payload);
+                    if (targetPaths.Count == 1)
+                    {
+                        var payload = System.Text.Json.JsonSerializer.Serialize(
+                            createdMarks[0], WatchMarkJsonOptions.WatchMarkInfo);
+                        Console.WriteLine(payload);
+                    }
+                    else
+                    {
+                        // Array envelope mirrors MarksResponse shape (no version).
+                        var payload = System.Text.Json.JsonSerializer.Serialize(
+                            createdMarks.ToArray(), WatchMarkJsonOptions.WatchMarkArrayInfo);
+                        Console.WriteLine(payload);
+                    }
                 }
                 else
                 {
-                    // Fallback: only the id is guaranteed. Shouldn't happen in
-                    // practice because the add-then-query sequence races only
-                    // with unmark, which CLI doesn't do here.
-                    Console.WriteLine(OutputFormatter.WrapEnvelopeText($"Marked {path} (id={id})"));
+                    Console.WriteLine(OutputFormatter.WrapEnvelopeText(
+                        $"Marked {targetPaths.Count} element(s) (ids={string.Join(",", createdIds)})"));
                 }
             }
             else
             {
-                Console.WriteLine($"Marked {path} (id={id})");
+                if (targetPaths.Count == 1)
+                    Console.WriteLine($"Marked {targetPaths[0]} (id={createdIds[0]})");
+                else
+                    Console.WriteLine($"Marked {targetPaths.Count} element(s) (ids={string.Join(",", createdIds)})");
             }
             return 0;
         }, json); });

@@ -4731,7 +4731,7 @@ internal static class PivotTableHelper
 
     // ==================== Readback ====================
 
-    internal static void ReadPivotTableProperties(PivotTableDefinition pivotDef, DocumentNode node)
+    internal static void ReadPivotTableProperties(PivotTableDefinition pivotDef, DocumentNode node, PivotTablePart? pivotPart = null)
     {
         if (pivotDef.Name?.HasValue == true) node.Format["name"] = pivotDef.Name.Value;
         if (pivotDef.CacheId?.HasValue == true) node.Format["cacheId"] = pivotDef.CacheId.Value;
@@ -4744,34 +4744,54 @@ internal static class PivotTableHelper
         if (pivotFields != null)
             node.Format["fieldCount"] = pivotFields.Elements<PivotField>().Count();
 
+        // R3-1: resolve field indices to cacheField names for rowFields /
+        // colFields / filters readback. dataField{N} already emits names, so
+        // consistency requires the same here. Fall back to numeric index only
+        // when the cache can't be loaded (defensive, should not happen for
+        // well-formed files).
+        string[]? fieldNames = null;
+        if (pivotPart != null)
+        {
+            var cachePart = pivotPart.GetPartsOfType<PivotTableCacheDefinitionPart>().FirstOrDefault();
+            var cacheFields = cachePart?.PivotCacheDefinition?.GetFirstChild<CacheFields>();
+            if (cacheFields != null)
+                fieldNames = cacheFields.Elements<CacheField>().Select(cf => cf.Name?.Value ?? "").ToArray();
+        }
+        string ResolveFieldName(uint idx)
+        {
+            if (fieldNames != null && idx < fieldNames.Length && !string.IsNullOrEmpty(fieldNames[idx]))
+                return fieldNames[idx];
+            return idx.ToString();
+        }
+
         // Row fields
         var rowFields = pivotDef.RowFields;
         if (rowFields != null)
         {
-            var indices = rowFields.Elements<Field>().Where(f => f.Index?.Value >= 0).Select(f => f.Index!.Value).ToList();
-            if (indices.Count > 0)
-                node.Format["rowFields"] = string.Join(",", indices);
+            var names = rowFields.Elements<Field>().Where(f => f.Index?.Value >= 0).Select(f => ResolveFieldName((uint)f.Index!.Value)).ToList();
+            if (names.Count > 0)
+                node.Format["rowFields"] = string.Join(",", names);
         }
 
         // Column fields
         var colFields = pivotDef.ColumnFields;
         if (colFields != null)
         {
-            var indices = colFields.Elements<Field>().Where(f => f.Index?.Value >= 0).Select(f => f.Index!.Value).ToList();
-            if (indices.Count > 0)
-                node.Format["colFields"] = string.Join(",", indices);
+            var names = colFields.Elements<Field>().Where(f => f.Index?.Value >= 0).Select(f => ResolveFieldName((uint)f.Index!.Value)).ToList();
+            if (names.Count > 0)
+                node.Format["colFields"] = string.Join(",", names);
         }
 
         // Page/filter fields
         var pageFields = pivotDef.PageFields;
         if (pageFields != null)
         {
-            var indices = pageFields.Elements<PageField>().Select(f => f.Field?.Value ?? -1).Where(v => v >= 0).ToList();
-            if (indices.Count > 0)
+            var names = pageFields.Elements<PageField>().Select(f => f.Field?.Value ?? -1).Where(v => v >= 0).Select(v => ResolveFieldName((uint)v)).ToList();
+            if (names.Count > 0)
                 // R2-3: canonical key matches input ('filters=' on Add/Set).
                 // Legacy 'filterFields' output key removed in favor of single
                 // canonical key per CLAUDE.md "Canonical DocumentNode.Format Rules".
-                node.Format["filters"] = string.Join(",", indices);
+                node.Format["filters"] = string.Join(",", names);
         }
 
         // Data fields (use typed property for reliable access)

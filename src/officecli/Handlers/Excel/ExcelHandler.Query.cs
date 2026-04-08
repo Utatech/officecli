@@ -555,7 +555,7 @@ public partial class ExcelHandler
             var pivotPart = pivotParts[ptIdx - 1];
             var ptNode = new DocumentNode { Path = path, Type = "pivottable" };
             if (pivotPart.PivotTableDefinition != null)
-                PivotTableHelper.ReadPivotTableProperties(pivotPart.PivotTableDefinition, ptNode);
+                PivotTableHelper.ReadPivotTableProperties(pivotPart.PivotTableDefinition, ptNode, pivotPart);
             return ptNode;
         }
 
@@ -856,7 +856,7 @@ public partial class ExcelHandler
                     var node = new DocumentNode { Path = $"/{sheetName}/pivottable[{i + 1}]", Type = "pivottable" };
                     var pivotDef = pivotParts[i].PivotTableDefinition;
                     if (pivotDef != null)
-                        PivotTableHelper.ReadPivotTableProperties(pivotDef, node);
+                        PivotTableHelper.ReadPivotTableProperties(pivotDef, node, pivotParts[i]);
 
                     if (parsed.ValueContains != null)
                     {

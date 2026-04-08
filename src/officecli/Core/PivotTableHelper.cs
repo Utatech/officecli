@@ -4943,6 +4943,149 @@ internal static class PivotTableHelper
             node.Format["style"] = styleInfo.Name.Value;
     }
 
+    /// <summary>
+    /// R10-1: refresh a pivot's cache definition + records from a new source
+    /// range spec ("Sheet1!A1:C4" or "A1:C4" — same sheet as the existing
+    /// CacheSource). Replaces CacheFields, updates WorksheetSource.Reference
+    /// (and Sheet if changed), rewrites the PivotTableCacheRecordsPart, and
+    /// resizes pivotDef.PivotFields to match the new column count. Existing
+    /// PivotField Axis/DataField assignments are reset because indices may no
+    /// longer line up — RebuildFieldAreas reapplies them after this returns.
+    /// </summary>
+    private static void RefreshPivotCacheFromSource(PivotTablePart pivotPart, string newSourceSpec)
+    {
+        if (string.IsNullOrWhiteSpace(newSourceSpec))
+            throw new ArgumentException("source must not be empty");
+        newSourceSpec = newSourceSpec.Trim();
+        if (newSourceSpec.StartsWith("["))
+            throw new ArgumentException(
+                "External workbook references are not supported in pivot source. "
+                + "Use a local sheet name (e.g. Sheet1!A1:D10)");
+
+        var cachePart = pivotPart.GetPartsOfType<PivotTableCacheDefinitionPart>().FirstOrDefault()
+            ?? throw new InvalidOperationException("Pivot table has no cache definition part");
+        var cacheDef = cachePart.PivotCacheDefinition
+            ?? throw new InvalidOperationException("Pivot cache definition is missing");
+        var existingWsSource = cacheDef.CacheSource?.WorksheetSource
+            ?? throw new InvalidOperationException("Pivot cache source is not a worksheet source");
+
+        // Parse the new source spec.
+        string newSheetName;
+        string newRef;
+        if (newSourceSpec.Contains('!'))
+        {
+            var parts = newSourceSpec.Split('!', 2);
+            newSheetName = parts[0].Trim().Trim('\'', '"').Trim();
+            newRef = parts[1].Trim();
+        }
+        else
+        {
+            newSheetName = existingWsSource.Sheet?.Value ?? "";
+            newRef = newSourceSpec;
+        }
+
+        // Locate the source worksheet via the workbook part.
+        var workbookPart = pivotPart.GetParentParts().OfType<WorksheetPart>().FirstOrDefault()
+            ?.GetParentParts().OfType<WorkbookPart>().FirstOrDefault()
+            ?? throw new InvalidOperationException("Workbook part not reachable from pivot table part");
+        var sheetEntry = workbookPart.Workbook?.Sheets?.Elements<Sheet>()
+            .FirstOrDefault(s => s.Name?.Value == newSheetName)
+            ?? throw new ArgumentException($"Source sheet not found: {newSheetName}");
+        if (sheetEntry.Id?.Value is not string srcRelId)
+            throw new InvalidOperationException("Source sheet has no relationship id");
+        var sourceWsPart = workbookPart.GetPartById(srcRelId) as WorksheetPart
+            ?? throw new InvalidOperationException("Source sheet relationship does not resolve to a WorksheetPart");
+
+        // Re-read source data from the new range.
+        var (headers, columnData, _) = ReadSourceData(sourceWsPart, newRef);
+        if (headers.Length == 0)
+            throw new ArgumentException("Source range has no data");
+        if (columnData.Count == 0 || columnData[0].Length == 0)
+            throw new ArgumentException("Source range has no data rows");
+
+        // Build a fresh cache definition (just to harvest its CacheFields,
+        // fieldNumeric, and fieldValueIndex). We do NOT swap the part — only
+        // its child elements — so the workbook-level <pivotCache> registration
+        // and the relationship id from PivotTablePart → PivotCacheDefinitionPart
+        // stay intact.
+        var (freshDef, fieldNumeric, fieldValueIndex) =
+            BuildCacheDefinition(newSheetName, newRef, headers, columnData, axisFieldIndices: null, dateGroups: null);
+
+        // Replace WorksheetSource attributes in place.
+        existingWsSource.Reference = newRef;
+        existingWsSource.Sheet = newSheetName;
+
+        // Replace the CacheFields child wholesale.
+        var oldCacheFields = cacheDef.GetFirstChild<CacheFields>();
+        var freshCacheFields = freshDef.GetFirstChild<CacheFields>()
+            ?? throw new InvalidOperationException("Fresh cache definition missing CacheFields");
+        freshCacheFields.Remove();
+        if (oldCacheFields != null)
+            cacheDef.ReplaceChild(freshCacheFields, oldCacheFields);
+        else
+            cacheDef.AppendChild(freshCacheFields);
+
+        // Update the record count attribute on the cache definition.
+        var newRecordCount = (uint)columnData[0].Length;
+        cacheDef.RecordCount = newRecordCount;
+
+        // Rebuild the PivotTableCacheRecordsPart in place. Drop the old part
+        // (if any) and add a fresh one so the records align with the new
+        // CacheFields layout.
+        var oldRecordsPart = cachePart.GetPartsOfType<PivotTableCacheRecordsPart>().FirstOrDefault();
+        if (oldRecordsPart != null)
+            cachePart.DeletePart(oldRecordsPart);
+        var newRecordsPart = cachePart.AddNewPart<PivotTableCacheRecordsPart>();
+        newRecordsPart.PivotCacheRecords = BuildCacheRecords(columnData, fieldNumeric, fieldValueIndex, skipFieldIndices: null);
+        newRecordsPart.PivotCacheRecords.Save();
+        cacheDef.Id = cachePart.GetIdOfPart(newRecordsPart);
+        cacheDef.Save();
+
+        // Resize pivotDef.PivotFields to match the new header count. Reset
+        // axis/dataField on every retained PivotField — RebuildFieldAreas
+        // (called immediately after this in SetPivotTableProperties) reads
+        // the new headers and reapplies axis assignments.
+        var pivotDef = pivotPart.PivotTableDefinition
+            ?? throw new InvalidOperationException("Pivot table definition is missing");
+        var pivotFields = pivotDef.PivotFields;
+        if (pivotFields == null)
+        {
+            pivotFields = new PivotFields();
+            pivotDef.PivotFields = pivotFields;
+        }
+        var existingPfList = pivotFields.Elements<PivotField>().ToList();
+        // Drop trailing PivotFields beyond the new column count.
+        while (existingPfList.Count > headers.Length)
+        {
+            existingPfList[existingPfList.Count - 1].Remove();
+            existingPfList.RemoveAt(existingPfList.Count - 1);
+        }
+        // Append fresh PivotFields for any newly-added columns.
+        while (existingPfList.Count < headers.Length)
+        {
+            var pf = new PivotField { ShowAll = false };
+            pivotFields.AppendChild(pf);
+            existingPfList.Add(pf);
+        }
+        // Items contents on retained PivotFields are stale (they were
+        // generated from the old shared-items list). RebuildFieldAreas will
+        // re-generate them from the fresh CacheFields, but it only resets
+        // when the field is on an axis. Wipe them now so leftover entries
+        // from non-axis fields cannot be read by Excel.
+        foreach (var pf in existingPfList)
+        {
+            pf.RemoveAllChildren<Items>();
+        }
+        pivotFields.Count = (uint)headers.Length;
+
+        // RowFields / ColumnFields / PageFields / DataFields are preserved
+        // here so RebuildFieldAreas can read the current assignments and
+        // carry over any axes the caller did not explicitly re-specify in
+        // this Set call. RebuildFieldAreas resets PivotField.Axis/DataField
+        // and rewrites the area lists from scratch.
+        pivotDef.Save();
+    }
+
     internal static List<string> SetPivotTableProperties(PivotTablePart pivotPart, Dictionary<string, string> properties)
     {
         // Publish sort mode for this Set operation so the re-rendered items /
@@ -4975,6 +5118,27 @@ internal static class PivotTableHelper
             {
                 case "name":
                     pivotDef.Name = value;
+                    break;
+                case "source":
+                case "src":
+                    // R10-1: refreshing the pivot's source range MUST also
+                    // refresh the cache definition's CacheFields and the
+                    // CacheRecords part. Otherwise RebuildFieldAreas reads
+                    // headers from the stale cache and rejects fields that
+                    // exist in the new range. Run the refresh BEFORE the
+                    // field-area rebuild so any newly-added columns from the
+                    // new range are visible to header validation.
+                    RefreshPivotCacheFromSource(pivotPart, value);
+                    // Force RebuildFieldAreas to run even if the caller did
+                    // not pass any rows/cols/values keys, so the existing
+                    // PivotField axis assignments get re-rendered against
+                    // the new (possibly resized) header list.
+                    if (!fieldAreaProps.ContainsKey("rows") && !fieldAreaProps.ContainsKey("cols")
+                        && !fieldAreaProps.ContainsKey("values") && !fieldAreaProps.ContainsKey("filters")
+                        && !fieldAreaProps.ContainsKey("__sort_only__"))
+                    {
+                        fieldAreaProps["__sort_only__"] = "";
+                    }
                     break;
                 case "style":
                 {

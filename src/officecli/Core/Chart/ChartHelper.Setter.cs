@@ -1961,9 +1961,27 @@ internal static partial class ChartHelper
         var sourceChartType = seriesToMove[0].Parent;
         if (sourceChartType == null) return;
 
+        // Reject 3D source charts. Excel itself greys out the secondary-axis
+        // option on 3D charts because a 3D plotArea has one shared camera /
+        // perspective and cannot host a sibling 2D chart element. Previously
+        // the code below would match `bar3DChart` / `line3DChart` /
+        // `area3DChart` against the StartsWith("bar"/"line"/"area") branches
+        // and create a 2D sibling chart, which produced a plotArea mixing
+        // 3D + 2D chart types and made Excel crash on open. Match Excel UI:
+        // refuse the operation with a clear error.
+        var sourceLocalName = sourceChartType.LocalName;
+        if (sourceLocalName.Contains("3D", StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"Invalid secondaryaxis: source chart is 3D ({sourceLocalName}). " +
+                "Excel does not support a secondary axis on 3D charts because a 3D " +
+                "plot area cannot coexist with a second chart type. Convert to the 2D " +
+                "variant first (e.g. column3d -> column) before applying secondaryaxis.");
+        }
+
         // Create a new chart element of the same type for secondary axis
         OpenXmlCompositeElement secondaryChart;
-        var localName = sourceChartType.LocalName;
+        var localName = sourceLocalName;
         if (localName.StartsWith("line", StringComparison.OrdinalIgnoreCase))
         {
             secondaryChart = new C.LineChart(

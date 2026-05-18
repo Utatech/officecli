@@ -17,10 +17,22 @@ public partial class PowerPointHandler : IDocumentHandler
     private uint _nextShapeId = 10000;
     public int LastFindMatchCount { get; internal set; }
 
+    // Backing FileStream when we open via stream (shared-read mode). null
+    // when the package owns its own file handle via PresentationDocument.Open(path).
+    private FileStream? _backingStream;
+
     public PowerPointHandler(string filePath, bool editable)
     {
         _filePath = filePath;
-        _doc = PresentationDocument.Open(filePath, editable);
+        // Open via a shared FileStream so external readers (e.g. test harness
+        // ZipFile.OpenRead while the handler is alive) don't hit the macOS
+        // flock exclusive lock that PresentationDocument.Open(path, editable)
+        // would acquire. The package writes through to the stream; we call
+        // _doc.Save() in Dispose() to flush before closing the stream.
+        var share = editable ? FileShare.Read : FileShare.ReadWrite;
+        var access = editable ? FileAccess.ReadWrite : FileAccess.Read;
+        _backingStream = new FileStream(filePath, FileMode.Open, access, share);
+        _doc = PresentationDocument.Open(_backingStream, editable);
         if (editable)
             InitShapeIdCounter();
     }
@@ -494,7 +506,18 @@ public partial class PowerPointHandler : IDocumentHandler
 
     public List<ValidationError> Validate() => RawXmlHelper.ValidateDocument(_doc);
 
-    public void Dispose() => _doc.Dispose();
+    public void Dispose()
+    {
+        // Save through the package (flush in-memory edits to the underlying
+        // stream) before disposing. When we own the backing FileStream, the
+        // package would otherwise leave the on-disk file in whatever state
+        // the last auto-flush left it — for the stream-Open path this can
+        // truncate to zero bytes and look like a corrupted zip on reopen.
+        try { _doc.Save(); } catch { /* read-only or already disposed */ }
+        _doc.Dispose();
+        _backingStream?.Dispose();
+        _backingStream = null;
+    }
 
     // Internal accessors used by PptxBatchEmitter (resource enumeration).
     // Keep the PresentationPart itself private; expose only the counts and

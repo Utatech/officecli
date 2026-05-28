@@ -332,7 +332,7 @@ public partial class WordHandler
         var fnRefRun = new Run(fnRefRPr, new FootnoteReference { Id = fnId });
         InsertIntoParagraph(fnPara, fnRefRun, index);
 
-        var resultPath = $"/footnote[{fnId}]";
+        var resultPath = $"/footnote[@footnoteId={fnId}]";
         return resultPath;
     }
 
@@ -382,7 +382,7 @@ public partial class WordHandler
         var enRefRun = new Run(enRefRPr, new EndnoteReference { Id = enId });
         InsertIntoParagraph(enPara, enRefRun, index);
 
-        var resultPath = $"/endnote[{enId}]";
+        var resultPath = $"/endnote[@endnoteId={enId}]";
         return resultPath;
     }
 

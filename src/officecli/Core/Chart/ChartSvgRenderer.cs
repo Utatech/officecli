@@ -1781,7 +1781,7 @@ internal partial class ChartSvgRenderer
 
                 // Per-series line width (a:ln w="..." in EMU, convert to pt: 1pt = 12700 EMU)
                 var lnWidth = ln?.GetAttributes().FirstOrDefault(a => a.LocalName == "w").Value;
-                info.LineWidths.Add(lnWidth != null && int.TryParse(lnWidth, out var lw) ? Math.Round(lw / 12700.0, 1) : 2);
+                info.LineWidths.Add(lnWidth != null && int.TryParse(lnWidth, out var lw) ? Math.Round(lw / EmuConverter.EmuPerPointF, 1) : 2);
 
                 // Per-series trendline
                 var trendlineEl = ser.Elements().FirstOrDefault(e => e.LocalName == "trendline");
@@ -1818,7 +1818,7 @@ internal partial class ChartSvgRenderer
                     tlInfo.Color = ExtractLineColor(tlSpPr);
                     if (tlLn?.GetAttributes().FirstOrDefault(a => a.LocalName == "w").Value is string tlw
                         && int.TryParse(tlw, out var tlwPt))
-                        tlInfo.Width = Math.Round(tlwPt / 12700.0, 1);
+                        tlInfo.Width = Math.Round(tlwPt / EmuConverter.EmuPerPointF, 1);
                     var tlDash = tlLn?.Elements().FirstOrDefault(e => e.LocalName == "prstDash");
                     tlInfo.Dash = tlDash?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value ?? "dash";
                     info.Trendlines.Add(tlInfo);
@@ -1849,7 +1849,7 @@ internal partial class ChartSvgRenderer
                     var ebLn = ebSpPr?.Elements().FirstOrDefault(e => e.LocalName == "ln");
                     if (ebLn?.GetAttributes().FirstOrDefault(a => a.LocalName == "w").Value is string ebw
                         && int.TryParse(ebw, out var ebwPt))
-                        ebInfo.Width = Math.Round(ebwPt / 12700.0, 1);
+                        ebInfo.Width = Math.Round(ebwPt / EmuConverter.EmuPerPointF, 1);
                     info.ErrorBars.Add(ebInfo);
                 }
                 else
@@ -1866,7 +1866,7 @@ internal partial class ChartSvgRenderer
                 info.DropLineColor = ExtractLineColor(dlSpPr);
                 if (dlLn?.GetAttributes().FirstOrDefault(a => a.LocalName == "w").Value is string dlw
                     && int.TryParse(dlw, out var dlwPt))
-                    info.DropLineWidth = Math.Round(dlwPt / 12700.0, 1);
+                    info.DropLineWidth = Math.Round(dlwPt / EmuConverter.EmuPerPointF, 1);
                 var dlDash = dlLn?.Elements().FirstOrDefault(e => e.LocalName == "prstDash");
                 info.DropLineDash = dlDash?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
             }
@@ -1879,7 +1879,7 @@ internal partial class ChartSvgRenderer
                 info.HighLowLineColor = ExtractLineColor(hlSpPr);
                 if (hlLn?.GetAttributes().FirstOrDefault(a => a.LocalName == "w").Value is string hlw
                     && int.TryParse(hlw, out var hlwPt))
-                    info.HighLowLineWidth = Math.Round(hlwPt / 12700.0, 1);
+                    info.HighLowLineWidth = Math.Round(hlwPt / EmuConverter.EmuPerPointF, 1);
             }
             var upDownBars = chartTypeEl.Elements().FirstOrDefault(e => e.LocalName == "upDownBars");
             info.HasUpDownBars = upDownBars != null;

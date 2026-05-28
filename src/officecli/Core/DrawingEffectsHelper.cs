@@ -32,8 +32,8 @@ internal static class DrawingEffectsHelper
 
         var shadow = new Drawing.OuterShadow
         {
-            BlurRadius = (long)(blurPt * 12700),
-            Distance = (long)(distPt * 12700),
+            BlurRadius = (long)(blurPt * EmuConverter.EmuPerPoint),
+            Distance = (long)(distPt * EmuConverter.EmuPerPoint),
             Direction = (int)(angleDeg * 60000),
             Alignment = Drawing.RectangleAlignmentValues.TopLeft,
             RotateWithShape = false
@@ -64,7 +64,7 @@ internal static class DrawingEffectsHelper
         bool hasExplicitOpacity = parts.Length > 2;
         var opacity = ParseParam(parts, 2, 75.0, "glow opacity");
 
-        var glow = new Drawing.Glow { Radius = (long)(radiusPt * 12700) };
+        var glow = new Drawing.Glow { Radius = (long)(radiusPt * EmuConverter.EmuPerPoint) };
         var clr = colorBuilder(parts[0]);
         bool colorHasAlpha = clr.GetFirstChild<Drawing.Alpha>() != null;
         bool colorEncodesAlpha = ColorEncodesExplicitAlpha(parts[0]);
@@ -137,7 +137,7 @@ internal static class DrawingEffectsHelper
         if (!double.TryParse(numStr, System.Globalization.CultureInfo.InvariantCulture, out var radiusPt)
             || double.IsNaN(radiusPt) || double.IsInfinity(radiusPt) || radiusPt < 0)
             throw new ArgumentException($"Invalid 'softedge' value '{value}'. Expected a finite non-negative numeric radius in points.");
-        return new Drawing.SoftEdge { Radius = (long)(radiusPt * 12700) };
+        return new Drawing.SoftEdge { Radius = (long)(radiusPt * EmuConverter.EmuPerPoint) };
     }
 
     /// <summary>

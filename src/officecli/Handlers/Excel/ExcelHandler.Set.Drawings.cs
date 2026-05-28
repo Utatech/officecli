@@ -538,7 +538,7 @@ public partial class ExcelHandler
                         && double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture, out var wpt))
                     {
-                        outline.Width = (int)Math.Round(wpt * 12700);
+                        outline.Width = (int)Math.Round(wpt * EmuConverter.EmuPerPoint);
                     }
                     if (parts.Length > 2)
                     {

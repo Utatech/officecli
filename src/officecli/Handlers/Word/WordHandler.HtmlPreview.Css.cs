@@ -207,7 +207,7 @@ public partial class WordHandler
         if (scheme != null) color = ResolveSchemeColor(scheme);
 
         var w = ln.GetAttributes().FirstOrDefault(a => a.LocalName == "w").Value;
-        var widthPx = w != null && long.TryParse(w, out var emu) ? Math.Max(1, emu / 12700.0) : 1;
+        var widthPx = w != null && long.TryParse(w, out var emu) ? Math.Max(1, emu / EmuConverter.EmuPerPointF) : 1;
 
         return $"border:{widthPx:0.#}px solid {color ?? "#000"}";
     }
@@ -1683,7 +1683,7 @@ public partial class WordHandler
                 {
                     var wAttr = child.GetAttributes().FirstOrDefault(a => a.LocalName == "w");
                     var widthEmu = long.TryParse(wAttr.Value, out var w) ? w : 0;
-                    var widthPt = Math.Max(0.5, widthEmu / 12700.0);
+                    var widthPt = Math.Max(0.5, widthEmu / EmuConverter.EmuPerPointF);
                     var colorMatch = System.Text.RegularExpressions.Regex.Match(
                         child.InnerXml, @"val=""([0-9A-Fa-f]{6})""");
                     var color = colorMatch.Success ? $"#{colorMatch.Groups[1].Value}" : "currentColor";
@@ -1697,11 +1697,11 @@ public partial class WordHandler
                         child.InnerXml, @"val=""([0-9A-Fa-f]{6})""");
                     var color = colorMatch.Success ? $"#{colorMatch.Groups[1].Value}" : "#000000";
                     var blurEmu = attrs.TryGetValue("blurRad", out var br) && long.TryParse(br, out var blurVal) ? blurVal : 0;
-                    var blurPx = blurEmu / 12700.0 * 1.333;
+                    var blurPx = blurEmu / EmuConverter.EmuPerPointF * 1.333;
                     var distEmu = attrs.TryGetValue("dist", out var dist) && long.TryParse(dist, out var distLong) ? distLong : 0;
                     var dirVal = attrs.TryGetValue("dir", out var dir) && long.TryParse(dir, out var dirLong) ? dirLong : 0;
                     var angleRad = dirVal / 60000.0 * Math.PI / 180.0;
-                    var distPx = distEmu / 12700.0 * 1.333;
+                    var distPx = distEmu / EmuConverter.EmuPerPointF * 1.333;
                     var xPx = distPx * Math.Sin(angleRad);
                     var yPx = distPx * Math.Cos(angleRad);
                     var alphaMatch = System.Text.RegularExpressions.Regex.Match(
@@ -1715,7 +1715,7 @@ public partial class WordHandler
                 {
                     var radAttr = child.GetAttributes().FirstOrDefault(a => a.LocalName == "rad");
                     var radiusEmu = long.TryParse(radAttr.Value, out var r) ? r : 0;
-                    var radiusPx = radiusEmu / 12700.0 * 1.333;
+                    var radiusPx = radiusEmu / EmuConverter.EmuPerPointF * 1.333;
                     var colorMatch = System.Text.RegularExpressions.Regex.Match(
                         child.InnerXml, @"val=""([0-9A-Fa-f]{6})""");
                     var color = colorMatch.Success ? $"#{colorMatch.Groups[1].Value}" : "#000000";
@@ -1786,8 +1786,8 @@ public partial class WordHandler
         var endPos = attrs.TryGetValue("endPos", out var ep) && int.TryParse(ep, out var epVal) ? epVal / 1000.0 : 90.0;
         var distEmu = attrs.TryGetValue("dist", out var d) && long.TryParse(d, out var dVal) ? dVal : 0;
         var blurEmu = attrs.TryGetValue("blurRad", out var br) && long.TryParse(br, out var brVal) ? brVal : 0;
-        var distPx = distEmu / 12700.0 * 1.333;
-        var blurPx = blurEmu / 12700.0 * 1.333;
+        var distPx = distEmu / EmuConverter.EmuPerPointF * 1.333;
+        var blurPx = blurEmu / EmuConverter.EmuPerPointF * 1.333;
 
         // Build the reflection element: flipped, fading, non-interactive
         var reflectStyle = new List<string>();

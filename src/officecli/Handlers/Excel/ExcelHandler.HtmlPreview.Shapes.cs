@@ -11,6 +11,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using Drawing = DocumentFormat.OpenXml.Drawing;
 using XDR = DocumentFormat.OpenXml.Drawing.Spreadsheet;
+using OfficeCli.Core;
 
 namespace OfficeCli.Handlers;
 
@@ -86,7 +87,7 @@ public partial class ExcelHandler
         var ln = spPr?.GetFirstChild<Drawing.Outline>();
         var strokeHex = ln != null ? (TryReadSolidFillHex(ln) ?? "#000000") : "#000000";
         var strokeWidthPx = 1.0;
-        if (ln?.Width?.Value is int lw) strokeWidthPx = Math.Max(0.5, lw / 12700.0); // EMU→pt≈px
+        if (ln?.Width?.Value is int lw) strokeWidthPx = Math.Max(0.5, lw / EmuConverter.EmuPerPointF); // EMU→pt≈px
         var hasNoLine = ln?.GetFirstChild<Drawing.NoFill>() != null;
 
         // Outer div fills the overlay parent.

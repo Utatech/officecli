@@ -1044,9 +1044,9 @@ public partial class PowerPointHandler
             if (outerShadow != null)
             {
                 var shadowColor = EnsureEightDigitHexForEffect(ReadColorFromElement(outerShadow) ?? "000000");
-                var blurPt = outerShadow.BlurRadius?.HasValue == true ? $"{outerShadow.BlurRadius.Value / 12700.0:0.##}" : "4";
+                var blurPt = outerShadow.BlurRadius?.HasValue == true ? $"{outerShadow.BlurRadius.Value / EmuConverter.EmuPerPointF:0.##}" : "4";
                 var angleDeg = outerShadow.Direction?.HasValue == true ? $"{outerShadow.Direction.Value / 60000.0:0.##}" : "45";
-                var distPt = outerShadow.Distance?.HasValue == true ? $"{outerShadow.Distance.Value / 12700.0:0.##}" : "3";
+                var distPt = outerShadow.Distance?.HasValue == true ? $"{outerShadow.Distance.Value / EmuConverter.EmuPerPointF:0.##}" : "3";
                 var alphaEl = outerShadow.Descendants<Drawing.Alpha>().FirstOrDefault();
                 // OOXML default: <a:outerShdw> without <a:alpha> is fully opaque
                 // (the shadow inherits the color element's alpha; an absent alpha
@@ -1059,7 +1059,7 @@ public partial class PowerPointHandler
             if (glow != null)
             {
                 var glowColor = EnsureEightDigitHexForEffect(ReadColorFromElement(glow) ?? "000000");
-                var radiusPt = glow.Radius?.HasValue == true ? $"{glow.Radius.Value / 12700.0:0.##}" : "8";
+                var radiusPt = glow.Radius?.HasValue == true ? $"{glow.Radius.Value / EmuConverter.EmuPerPointF:0.##}" : "8";
                 var glowAlpha = glow.Descendants<Drawing.Alpha>().FirstOrDefault();
                 // OOXML default: <a:glow> without <a:alpha> is fully opaque.
                 var glowOpacity = glowAlpha?.Val?.HasValue == true ? $"{glowAlpha.Val.Value / 1000.0:0.##}" : "100";
@@ -1092,7 +1092,7 @@ public partial class PowerPointHandler
                 // "4pt"). The bare numeric form here was the lone outlier on
                 // the effects readback surface and broke dump round-trip
                 // when set softEdge=<value> re-parses the readback.
-                node.Format["softEdge"] = $"{softEdge.Radius.Value / 12700.0:0.##}pt";
+                node.Format["softEdge"] = $"{softEdge.Radius.Value / EmuConverter.EmuPerPointF:0.##}pt";
         }
 
         // 3D rotation (scene3d)
@@ -1118,7 +1118,7 @@ public partial class PowerPointHandler
         if (sp3d != null)
         {
             if (sp3d.ExtrusionHeight?.HasValue == true && sp3d.ExtrusionHeight.Value != 0)
-                node.Format["depth"] = $"{sp3d.ExtrusionHeight.Value / 12700.0:0.##}";
+                node.Format["depth"] = $"{sp3d.ExtrusionHeight.Value / EmuConverter.EmuPerPointF:0.##}";
             if (sp3d.PresetMaterial?.HasValue == true)
                 node.Format["material"] = sp3d.PresetMaterial.InnerText;
             var bevelT = sp3d.BevelTop;
@@ -1464,9 +1464,9 @@ public partial class PowerPointHandler
                 if (rOuterShadow != null)
                 {
                     var sColor = EnsureEightDigitHexForEffect(ReadColorFromElement(rOuterShadow) ?? "000000");
-                    var blurPt = rOuterShadow.BlurRadius?.HasValue == true ? $"{rOuterShadow.BlurRadius.Value / 12700.0:0.##}" : "4";
+                    var blurPt = rOuterShadow.BlurRadius?.HasValue == true ? $"{rOuterShadow.BlurRadius.Value / EmuConverter.EmuPerPointF:0.##}" : "4";
                     var angleDeg = rOuterShadow.Direction?.HasValue == true ? $"{rOuterShadow.Direction.Value / 60000.0:0.##}" : "45";
-                    var distPt = rOuterShadow.Distance?.HasValue == true ? $"{rOuterShadow.Distance.Value / 12700.0:0.##}" : "3";
+                    var distPt = rOuterShadow.Distance?.HasValue == true ? $"{rOuterShadow.Distance.Value / EmuConverter.EmuPerPointF:0.##}" : "3";
                     var alphaEl = rOuterShadow.Descendants<Drawing.Alpha>().FirstOrDefault();
                     var opacity = alphaEl?.Val?.HasValue == true ? $"{alphaEl.Val.Value / 1000.0:0.##}" : "100";
                     node.Format["shadow"] = $"{sColor}-{blurPt}-{angleDeg}-{distPt}-{opacity}";
@@ -1475,7 +1475,7 @@ public partial class PowerPointHandler
                 if (rGlow != null)
                 {
                     var gColor = EnsureEightDigitHexForEffect(ReadColorFromElement(rGlow) ?? "000000");
-                    var radiusPt = rGlow.Radius?.HasValue == true ? $"{rGlow.Radius.Value / 12700.0:0.##}" : "8";
+                    var radiusPt = rGlow.Radius?.HasValue == true ? $"{rGlow.Radius.Value / EmuConverter.EmuPerPointF:0.##}" : "8";
                     var gAlphaEl = rGlow.Descendants<Drawing.Alpha>().FirstOrDefault();
                     var gOpacity = gAlphaEl?.Val?.HasValue == true ? $"{gAlphaEl.Val.Value / 1000.0:0.##}" : "100";
                     node.Format["glow"] = $"{gColor}-{radiusPt}-{gOpacity}";
@@ -1497,7 +1497,7 @@ public partial class PowerPointHandler
                 }
                 var rSoftEdge = runEffectList.GetFirstChild<Drawing.SoftEdge>();
                 if (rSoftEdge?.Radius?.HasValue == true)
-                    node.Format["softEdge"] = $"{rSoftEdge.Radius.Value / 12700.0:0.##}pt";
+                    node.Format["softEdge"] = $"{rSoftEdge.Radius.Value / EmuConverter.EmuPerPointF:0.##}pt";
             }
 
             // Long-tail OOXML fallback. drawingML rPr carries most properties
@@ -1751,9 +1751,9 @@ public partial class PowerPointHandler
             if (picOuterShadow != null)
             {
                 var shadowColor = EnsureEightDigitHexForEffect(ReadColorFromElement(picOuterShadow) ?? "000000");
-                var blurPt = picOuterShadow.BlurRadius?.HasValue == true ? $"{picOuterShadow.BlurRadius.Value / 12700.0:0.##}" : "4";
+                var blurPt = picOuterShadow.BlurRadius?.HasValue == true ? $"{picOuterShadow.BlurRadius.Value / EmuConverter.EmuPerPointF:0.##}" : "4";
                 var angleDeg = picOuterShadow.Direction?.HasValue == true ? $"{picOuterShadow.Direction.Value / 60000.0:0.##}" : "45";
-                var distPt = picOuterShadow.Distance?.HasValue == true ? $"{picOuterShadow.Distance.Value / 12700.0:0.##}" : "3";
+                var distPt = picOuterShadow.Distance?.HasValue == true ? $"{picOuterShadow.Distance.Value / EmuConverter.EmuPerPointF:0.##}" : "3";
                 var alphaEl = picOuterShadow.Descendants<Drawing.Alpha>().FirstOrDefault();
                 var opacity = alphaEl?.Val?.HasValue == true ? $"{alphaEl.Val.Value / 1000.0:0.##}" : "40";
                 node.Format["shadow"] = $"{shadowColor}-{blurPt}-{angleDeg}-{distPt}-{opacity}";
@@ -1762,7 +1762,7 @@ public partial class PowerPointHandler
             if (picGlow != null)
             {
                 var glowColor = EnsureEightDigitHexForEffect(ReadColorFromElement(picGlow) ?? "000000");
-                var radiusPt = picGlow.Radius?.HasValue == true ? $"{picGlow.Radius.Value / 12700.0:0.##}" : "8";
+                var radiusPt = picGlow.Radius?.HasValue == true ? $"{picGlow.Radius.Value / EmuConverter.EmuPerPointF:0.##}" : "8";
                 var glowAlpha = picGlow.Descendants<Drawing.Alpha>().FirstOrDefault();
                 var glowOpacity = glowAlpha?.Val?.HasValue == true ? $"{glowAlpha.Val.Value / 1000.0:0.##}" : "75";
                 node.Format["glow"] = $"{glowColor}-{radiusPt}-{glowOpacity}";

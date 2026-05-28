@@ -1004,7 +1004,7 @@ internal static partial class ChartHelper
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
-                    var widthEmu = (int)(ParseHelpers.SafeParseDouble(value, "linewidth") * 12700);
+                    var widthEmu = (int)(ParseHelpers.SafeParseDouble(value, "linewidth") * EmuConverter.EmuPerPoint);
                     foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
                         ApplySeriesLineWidth(ser, widthEmu);
                     break;
@@ -1300,7 +1300,7 @@ internal static partial class ChartHelper
                         if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                         {
                             var widthPt = outParts.Length > 1 && double.TryParse(outParts[1], System.Globalization.CultureInfo.InvariantCulture, out var w) ? w : 0.5;
-                            var outline = new Drawing.Outline { Width = (int)(widthPt * 12700) };
+                            var outline = new Drawing.Outline { Width = (int)(widthPt * EmuConverter.EmuPerPoint) };
                             var sf = new Drawing.SolidFill();
                             sf.AppendChild(BuildChartColorElement(outParts[0]));
                             outline.AppendChild(sf);
@@ -3165,7 +3165,7 @@ internal static partial class ChartHelper
         var widthPt = parts.Length > 1 && double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var w) ? w : 0.5;
         var dash = parts.Length > 2 ? parts[2].Trim() : null;
 
-        var outline = new Drawing.Outline { Width = (int)(widthPt * 12700) };
+        var outline = new Drawing.Outline { Width = (int)(widthPt * EmuConverter.EmuPerPoint) };
         var solidFill = new Drawing.SolidFill();
         solidFill.AppendChild(BuildChartColorElement(color));
         outline.AppendChild(solidFill);
@@ -3222,7 +3222,7 @@ internal static partial class ChartHelper
                 System.Globalization.CultureInfo.InvariantCulture, out var widthPt))
             return false;
         var outline = GetOrCreateGridlineOutline(gridlines);
-        outline.Width = (int)(widthPt * 12700);
+        outline.Width = (int)(widthPt * EmuConverter.EmuPerPoint);
         return true;
     }
 
@@ -3282,7 +3282,7 @@ internal static partial class ChartHelper
                 if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out var widthPt))
                     return false;
-                outline.Width = (int)(widthPt * 12700);
+                outline.Width = (int)(widthPt * EmuConverter.EmuPerPoint);
                 return true;
             }
             case "dash":

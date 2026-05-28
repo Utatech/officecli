@@ -101,7 +101,7 @@ public partial class ExcelHandler
             try
             {
                 var emu = OfficeCli.Core.EmuConverter.ParseEmu(trimmed);
-                pts = emu / 12700.0;
+                pts = emu / EmuConverter.EmuPerPointF;
             }
             catch (Exception ex)
             {

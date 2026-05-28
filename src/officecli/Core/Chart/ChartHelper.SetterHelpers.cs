@@ -267,7 +267,7 @@ internal static partial class ChartHelper
             System.Globalization.CultureInfo.InvariantCulture, out var w) ? w : 0.75;
         var dash = parts.Length > 2 ? parts[2].Trim() : null;
 
-        var outline = new Drawing.Outline { Width = (int)(widthPt * 12700) };
+        var outline = new Drawing.Outline { Width = (int)(widthPt * EmuConverter.EmuPerPoint) };
         var sf = new Drawing.SolidFill();
         sf.AppendChild(BuildChartColorElement(color));
         outline.AppendChild(sf);
@@ -758,7 +758,7 @@ internal static partial class ChartHelper
 
             case "linewidth":
             case "outlinewidth":
-                ApplySeriesLineWidth(ser, (int)(ParseHelpers.SafeParseDouble(value, "series.lineWidth") * 12700));
+                ApplySeriesLineWidth(ser, (int)(ParseHelpers.SafeParseDouble(value, "series.lineWidth") * EmuConverter.EmuPerPoint));
                 return true;
 
             case "linedash" or "dash":

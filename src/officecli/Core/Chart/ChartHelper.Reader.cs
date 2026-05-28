@@ -854,7 +854,7 @@ internal static partial class ChartHelper
                 // Line width
                 var outline = serSpPr?.GetFirstChild<Drawing.Outline>();
                 if (outline?.Width?.HasValue == true)
-                    seriesNode.Format["lineWidth"] = Math.Round(outline.Width.Value / 12700.0, 2);
+                    seriesNode.Format["lineWidth"] = Math.Round(outline.Width.Value / EmuConverter.EmuPerPointF, 2);
                 // Line dash
                 var prstDash = outline?.GetFirstChild<Drawing.PresetDash>();
                 if (prstDash?.Val?.HasValue == true)
@@ -1202,7 +1202,7 @@ internal static partial class ChartHelper
 
                 var outline = ser.GetFirstChild<C.ChartShapeProperties>()?.GetFirstChild<Drawing.Outline>();
                 var widthEmu = outline?.Width?.Value ?? 19050;
-                var widthPt = widthEmu / 12700.0;
+                var widthPt = widthEmu / EmuConverter.EmuPerPointF;
 
                 // Color: solidFill srgbClr val
                 var color = "FF0000";
@@ -1471,7 +1471,7 @@ internal static partial class ChartHelper
         var parts = new List<string> { color };
         if (outline.Width?.HasValue == true && outline.Width.Value > 0)
         {
-            var widthPt = outline.Width.Value / 12700.0;
+            var widthPt = outline.Width.Value / EmuConverter.EmuPerPointF;
             parts.Add(widthPt.ToString("G", System.Globalization.CultureInfo.InvariantCulture));
         }
         var dash = outline.GetFirstChild<Drawing.PresetDash>()?.Val;
@@ -1552,7 +1552,7 @@ internal static partial class ChartHelper
         if (color != null) node.Format[$"{prefix}Color"] = color;
 
         if (outline.Width?.HasValue == true)
-            node.Format[$"{prefix}Width"] = Math.Round(outline.Width.Value / 12700.0, 2);
+            node.Format[$"{prefix}Width"] = Math.Round(outline.Width.Value / EmuConverter.EmuPerPointF, 2);
 
         var dash = outline.GetFirstChild<Drawing.PresetDash>()?.Val;
         if (dash?.HasValue == true)
@@ -1568,7 +1568,7 @@ internal static partial class ChartHelper
         var color = ReadColorFromFill(fill);
         if (color != null) node.Format[$"{prefix}.color"] = color;
         if (outline.Width?.HasValue == true)
-            node.Format[$"{prefix}.width"] = Math.Round(outline.Width.Value / 12700.0, 2);
+            node.Format[$"{prefix}.width"] = Math.Round(outline.Width.Value / EmuConverter.EmuPerPointF, 2);
         var dash = outline.GetFirstChild<Drawing.PresetDash>()?.Val;
         if (dash?.HasValue == true)
             node.Format[$"{prefix}.dash"] = dash.InnerText!;

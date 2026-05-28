@@ -314,17 +314,17 @@ public partial class PowerPointHandler
         // Width attribute is on the element itself (w attr in EMU)
         double widthPt = 1.0;
         if (borderProps is Drawing.LeftBorderLineProperties lb && lb.Width?.HasValue == true)
-            widthPt = lb.Width.Value / 12700.0;
+            widthPt = lb.Width.Value / EmuConverter.EmuPerPointF;
         else if (borderProps is Drawing.RightBorderLineProperties rb && rb.Width?.HasValue == true)
-            widthPt = rb.Width.Value / 12700.0;
+            widthPt = rb.Width.Value / EmuConverter.EmuPerPointF;
         else if (borderProps is Drawing.TopBorderLineProperties tb && tb.Width?.HasValue == true)
-            widthPt = tb.Width.Value / 12700.0;
+            widthPt = tb.Width.Value / EmuConverter.EmuPerPointF;
         else if (borderProps is Drawing.BottomBorderLineProperties bb && bb.Width?.HasValue == true)
-            widthPt = bb.Width.Value / 12700.0;
+            widthPt = bb.Width.Value / EmuConverter.EmuPerPointF;
         else if (borderProps is Drawing.TopLeftToBottomRightBorderLineProperties tlbr && tlbr.Width?.HasValue == true)
-            widthPt = tlbr.Width.Value / 12700.0;
+            widthPt = tlbr.Width.Value / EmuConverter.EmuPerPointF;
         else if (borderProps is Drawing.BottomLeftToTopRightBorderLineProperties bltr && bltr.Width?.HasValue == true)
-            widthPt = bltr.Width.Value / 12700.0;
+            widthPt = bltr.Width.Value / EmuConverter.EmuPerPointF;
 
         if (widthPt < 0.5) widthPt = 0.5;
 

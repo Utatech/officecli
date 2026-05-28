@@ -519,7 +519,7 @@ public partial class ExcelHandler
                 if (colorPart != null)
                 {
                     var widthPt = outline.Width?.HasValue == true
-                        ? $":{outline.Width.Value / 12700.0:0.##}"
+                        ? $":{outline.Width.Value / EmuConverter.EmuPerPointF:0.##}"
                         : "";
                     node.Format["line"] = colorPart + widthPt;
                 }
@@ -539,9 +539,9 @@ public partial class ExcelHandler
             if (lIns.HasValue || rIns.HasValue || tIns.HasValue || bIns.HasValue)
             {
                 if (lIns == rIns && rIns == tIns && tIns == bIns && lIns.HasValue)
-                    node.Format["margin"] = $"{lIns.Value / 12700.0:0.##}pt";
+                    node.Format["margin"] = $"{lIns.Value / EmuConverter.EmuPerPointF:0.##}pt";
                 else
-                    node.Format["margin"] = $"{(lIns ?? 0) / 12700.0:0.##}pt,{(tIns ?? 0) / 12700.0:0.##}pt,{(rIns ?? 0) / 12700.0:0.##}pt,{(bIns ?? 0) / 12700.0:0.##}pt";
+                    node.Format["margin"] = $"{(lIns ?? 0) / EmuConverter.EmuPerPointF:0.##}pt,{(tIns ?? 0) / EmuConverter.EmuPerPointF:0.##}pt,{(rIns ?? 0) / EmuConverter.EmuPerPointF:0.##}pt,{(bIns ?? 0) / EmuConverter.EmuPerPointF:0.##}pt";
             }
         }
 
@@ -563,7 +563,7 @@ public partial class ExcelHandler
             if (glow != null)
             {
                 var gColor = ParseHelpers.FormatHexColor(glow.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "000000");
-                var gRadius = glow.Radius?.HasValue == true ? $"{glow.Radius.Value / 12700.0:0.##}" : "8";
+                var gRadius = glow.Radius?.HasValue == true ? $"{glow.Radius.Value / EmuConverter.EmuPerPointF:0.##}" : "8";
                 node.Format["glow"] = $"{gColor}-{gRadius}";
             }
         }
@@ -929,12 +929,12 @@ public partial class ExcelHandler
         var parts = (value ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 4)
         {
-            int Emu(string s) => (int)Math.Round(SpacingConverter.ParsePoints(s) * 12700);
+            int Emu(string s) => (int)Math.Round(SpacingConverter.ParsePoints(s) * EmuConverter.EmuPerPoint);
             return (Emu(parts[0]), Emu(parts[1]), Emu(parts[2]), Emu(parts[3]));
         }
         if (parts.Length == 1)
         {
-            var emu = (int)Math.Round(SpacingConverter.ParsePoints(parts[0]) * 12700);
+            var emu = (int)Math.Round(SpacingConverter.ParsePoints(parts[0]) * EmuConverter.EmuPerPoint);
             return (emu, emu, emu, emu);
         }
         throw new ArgumentException(

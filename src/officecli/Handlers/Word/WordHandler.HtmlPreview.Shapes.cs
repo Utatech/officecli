@@ -256,17 +256,17 @@ public partial class WordHandler
                         var offsetEl = hPos.Descendants().FirstOrDefault(e => e.LocalName == "posOffset");
                         if (offsetEl != null && long.TryParse(offsetEl.InnerText, out var offsetEmu))
                         {
-                            var halfPageEmu = (long)(GetPageLayout().WidthPt * 12700); // pt to EMU
+                            var halfPageEmu = (long)(GetPageLayout().WidthPt * EmuConverter.EmuPerPoint); // pt to EMU
                             isRight = offsetEmu > halfPageEmu;
                         }
                     }
                     // #7b: use the anchor's distT/distB/distL/distR for the
                     // float margin instead of a hardcoded 8px. The emu→pt
                     // conversion keeps spacing in line with what Word paints.
-                    var distT = (long)(anchor.DistanceFromTop?.Value ?? 0) / 12700.0;
-                    var distB = (long)(anchor.DistanceFromBottom?.Value ?? 0) / 12700.0;
-                    var distL = (long)(anchor.DistanceFromLeft?.Value ?? 0) / 12700.0;
-                    var distR = (long)(anchor.DistanceFromRight?.Value ?? 0) / 12700.0;
+                    var distT = (long)(anchor.DistanceFromTop?.Value ?? 0) / EmuConverter.EmuPerPointF;
+                    var distB = (long)(anchor.DistanceFromBottom?.Value ?? 0) / EmuConverter.EmuPerPointF;
+                    var distL = (long)(anchor.DistanceFromLeft?.Value ?? 0) / EmuConverter.EmuPerPointF;
+                    var distR = (long)(anchor.DistanceFromRight?.Value ?? 0) / EmuConverter.EmuPerPointF;
                     // Floor the "inside" margin (right for float:left, left for
                     // float:right) so text always has breathing room.
                     if (isRight)

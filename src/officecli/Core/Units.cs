@@ -65,7 +65,7 @@ internal static class Units
     }
 
     /// <summary>Convert EMU to points. 1 pt = 12700 EMU (exact).</summary>
-    public static double EmuToPt(long emu) => Math.Round(emu / 12700.0, 2);
+    public static double EmuToPt(long emu) => Math.Round(emu / EmuConverter.EmuPerPointF, 2);
 
     /// <summary>Convert half-points to points. 1 pt = 2 half-points (exact).</summary>
     public static double HalfPointsToPt(int hp) => hp / 2.0;

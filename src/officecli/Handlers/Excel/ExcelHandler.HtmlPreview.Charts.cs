@@ -234,10 +234,10 @@ public partial class ExcelHandler
         double totalWidth = 0;
         for (int c = fromCol + 1; c <= toCol; c++)
             totalWidth += (colWidths != null && colWidths.TryGetValue(c, out var w)) ? w : 48.0;
-        totalWidth += (toColOff - fromColOff) / 12700.0;
+        totalWidth += (toColOff - fromColOff) / EmuConverter.EmuPerPointF;
 
         // Default row height ~15pt; offsets in EMU (1pt = 12700 EMU)
-        double totalHeight = (toRow - fromRow) * 15.0 + (toRowOff - fromRowOff) / 12700.0;
+        double totalHeight = (toRow - fromRow) * 15.0 + (toRowOff - fromRowOff) / EmuConverter.EmuPerPointF;
 
         return ((int)Math.Max(totalWidth, 225), (int)Math.Max(totalHeight, 150));
     }

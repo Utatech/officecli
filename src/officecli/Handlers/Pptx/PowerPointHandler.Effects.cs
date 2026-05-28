@@ -3,6 +3,7 @@
 
 using DocumentFormat.OpenXml.Presentation;
 using Drawing = DocumentFormat.OpenXml.Drawing;
+using OfficeCli.Core;
 
 namespace OfficeCli.Handlers;
 
@@ -166,7 +167,7 @@ public partial class PowerPointHandler
         var numStr = value.EndsWith("pt", StringComparison.OrdinalIgnoreCase) ? value[..^2].Trim() : value;
         if (!double.TryParse(numStr, System.Globalization.CultureInfo.InvariantCulture, out var radiusPt) || double.IsNaN(radiusPt) || double.IsInfinity(radiusPt) || radiusPt < 0)
             throw new ArgumentException($"Invalid 'softedge' value '{value}'. Expected a finite non-negative numeric radius in points.");
-        InsertEffectInOrder(effectList, new Drawing.SoftEdge { Radius = (long)(radiusPt * 12700) });
+        InsertEffectInOrder(effectList, new Drawing.SoftEdge { Radius = (long)(radiusPt * EmuConverter.EmuPerPoint) });
     }
 
     /// <summary>
@@ -190,7 +191,7 @@ public partial class PowerPointHandler
             || double.IsNaN(radiusPt) || double.IsInfinity(radiusPt) || radiusPt < 0)
             throw new ArgumentException($"Invalid 'blur' value '{value}'. Expected a finite non-negative numeric radius in points.");
 
-        InsertEffectInOrder(effectList, new Drawing.Blur { Radius = (long)(radiusPt * 12700), Grow = true });
+        InsertEffectInOrder(effectList, new Drawing.Blur { Radius = (long)(radiusPt * EmuConverter.EmuPerPoint), Grow = true });
     }
 
     private static void ApplyTextReflection(Drawing.Run run, string value)
@@ -313,14 +314,14 @@ public partial class PowerPointHandler
             if (!double.TryParse(bevelParts[1].Trim(), System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var wPt) || double.IsNaN(wPt) || double.IsInfinity(wPt))
                 throw new ArgumentException($"Invalid bevel width: '{bevelParts[1]}'. Expected a finite number in points. Format: PRESET[-WIDTH[-HEIGHT]]");
-            w = (long)(wPt * 12700);
+            w = (long)(wPt * EmuConverter.EmuPerPoint);
         }
         if (bevelParts.Length > 2)
         {
             if (!double.TryParse(bevelParts[2].Trim(), System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var hPt) || double.IsNaN(hPt) || double.IsInfinity(hPt))
                 throw new ArgumentException($"Invalid bevel height: '{bevelParts[2]}'. Expected a finite number in points. Format: PRESET[-WIDTH[-HEIGHT]]");
-            h = (long)(hPt * 12700);
+            h = (long)(hPt * EmuConverter.EmuPerPoint);
         }
         else h = w;
 
@@ -622,8 +623,8 @@ public partial class PowerPointHandler
         var wEmu = hasW ? bevel.Width!.Value : 76200L;
         var hEmu = hasH ? bevel.Height!.Value : 76200L;
         if (wEmu == 76200L && hEmu == 76200L) return preset;
-        var w = $"{wEmu / 12700.0:0.##}";
-        var h = $"{hEmu / 12700.0:0.##}";
+        var w = $"{wEmu / EmuConverter.EmuPerPointF:0.##}";
+        var h = $"{hEmu / EmuConverter.EmuPerPointF:0.##}";
         // Emit single value when symmetric — "circle-4" not "circle-4-4".
         return wEmu == hEmu ? $"{preset}-{w}" : $"{preset}-{w}-{h}";
     }

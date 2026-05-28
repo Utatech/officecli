@@ -626,8 +626,8 @@ public partial class WordHandler
         long cyEmu = properties.TryGetValue("height", out var hStr)
             ? ParseEmu(hStr) : OfficeCli.Core.OleHelper.DefaultOleHeightEmu;
         // EMU → points (914400 EMU/inch, 72 points/inch).
-        double cxPt = cxEmu / 12700.0;
-        double cyPt = cyEmu / 12700.0;
+        double cxPt = cxEmu / EmuConverter.EmuPerPointF;
+        double cyPt = cyEmu / EmuConverter.EmuPerPointF;
         // Twips for w:dxaOrig/w:dyaOrig (20 twips/point).
         long cxTwips = (long)(cxPt * 20);
         long cyTwips = (long)(cyPt * 20);

@@ -164,7 +164,7 @@ internal static partial class ChartHelper
 
         // Style: colored dashed line, no markers. Width is pt → EMU (1pt = 12700 EMU).
         var spPr = new C.ChartShapeProperties();
-        var outline = new Drawing.Outline { Width = (int)Math.Round(widthPt * 12700) };
+        var outline = new Drawing.Outline { Width = (int)Math.Round(widthPt * EmuConverter.EmuPerPoint) };
         var sf = new Drawing.SolidFill();
         sf.AppendChild(BuildChartColorElement(color));
         outline.AppendChild(sf);

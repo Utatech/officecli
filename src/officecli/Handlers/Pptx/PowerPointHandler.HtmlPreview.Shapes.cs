@@ -221,7 +221,7 @@ public partial class PowerPointHandler
         }
         if (softEdge?.Radius?.HasValue == true)
         {
-            var edgePx = Math.Max(2, softEdge.Radius.Value / 12700.0 * 0.8);
+            var edgePx = Math.Max(2, softEdge.Radius.Value / EmuConverter.EmuPerPointF * 0.8);
             // Use linear-gradient masks on all 4 edges to create edge fade-out
             styles.Add($"-webkit-mask-image:linear-gradient(to right,transparent 0,black {edgePx:0.#}px,black calc(100% - {edgePx:0.#}px),transparent 100%)," +
                        $"linear-gradient(to bottom,transparent 0,black {edgePx:0.#}px,black calc(100% - {edgePx:0.#}px),transparent 100%)");
@@ -232,7 +232,7 @@ public partial class PowerPointHandler
         var sp3d = shape.ShapeProperties?.GetFirstChild<Drawing.Shape3DType>();
         if (sp3d?.BevelTop != null)
         {
-            var bevelW = sp3d.BevelTop.Width?.HasValue == true ? sp3d.BevelTop.Width.Value / 12700.0 : 6; // OOXML default 76200 EMU = 6pt
+            var bevelW = sp3d.BevelTop.Width?.HasValue == true ? sp3d.BevelTop.Width.Value / EmuConverter.EmuPerPointF : 6; // OOXML default 76200 EMU = 6pt
             var bW = Math.Max(1, bevelW * 0.5);
             styles.Add($"box-shadow:inset {bW:0.#}px {bW:0.#}px {bW * 1.5:0.#}px rgba(255,255,255,0.25),inset -{bW:0.#}px -{bW:0.#}px {bW * 1.5:0.#}px rgba(0,0,0,0.15)");
         }
@@ -960,13 +960,13 @@ public partial class PowerPointHandler
         {
             var c = ResolveFillColor(outline.GetFirstChild<Drawing.SolidFill>(), themeColors);
             if (c != null) lineColor = c;
-            if (outline.Width?.HasValue == true) lineWidth = outline.Width.Value / 12700.0;
+            if (outline.Width?.HasValue == true) lineWidth = outline.Width.Value / EmuConverter.EmuPerPointF;
         }
 
         // Ensure minimum dimensions so the line is visible
         // For horizontal lines (cy=0), the container needs height for stroke width
         // For vertical lines (cx=0), the container needs width for stroke width
-        var minDimEmu = (long)(lineWidth * 12700 + 12700); // lineWidth + 1pt padding
+        var minDimEmu = (long)(lineWidth * EmuConverter.EmuPerPoint + 12700); // lineWidth + 1pt padding
         var renderCx = Math.Max(cx, cx == 0 ? minDimEmu : 1);
         var renderCy = Math.Max(cy, cy == 0 ? minDimEmu : 1);
         var widthPt = Units.EmuToPt(renderCx);

@@ -291,7 +291,7 @@ public partial class WordHandler
                     {
                         var styleAttrW = shapeW.GetAttributes().FirstOrDefault(a => a.LocalName == "style");
                         var currentStyleW = styleAttrW.Value ?? "";
-                        var ptStrW = (ParseEmu(value) / 12700.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "pt";
+                        var ptStrW = (ParseEmu(value) / EmuConverter.EmuPerPointF).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "pt";
                         var newStyleW = ReplaceVmlStyleDimension(currentStyleW, "width", ptStrW);
                         shapeW.SetAttribute(new OpenXmlAttribute("", "style", "", newStyleW));
                         break;
@@ -317,7 +317,7 @@ public partial class WordHandler
                     {
                         var styleAttrH = shapeH.GetAttributes().FirstOrDefault(a => a.LocalName == "style");
                         var currentStyleH = styleAttrH.Value ?? "";
-                        var ptStrH = (ParseEmu(value) / 12700.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "pt";
+                        var ptStrH = (ParseEmu(value) / EmuConverter.EmuPerPointF).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "pt";
                         var newStyleH = ReplaceVmlStyleDimension(currentStyleH, "height", ptStrH);
                         shapeH.SetAttribute(new OpenXmlAttribute("", "style", "", newStyleH));
                         break;

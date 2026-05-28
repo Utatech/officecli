@@ -1038,7 +1038,7 @@ public partial class PowerPointHandler
                 case "indent":
                 {
                     // CONSISTENCY(pptx-bare-as-points): mirror AddParagraph / Set.Shape.
-                    var indentEmu = (int)Math.Round(SpacingConverter.ParsePointsSigned(value) * 12700.0);
+                    var indentEmu = (int)Math.Round(SpacingConverter.ParsePointsSigned(value) * EmuConverter.EmuPerPointF);
                     foreach (var para in shape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
@@ -1050,7 +1050,7 @@ public partial class PowerPointHandler
                 case "marginleft" or "marl":
                 {
                     // CONSISTENCY(pptx-bare-as-points): mirror AddParagraph / Set.Shape.
-                    var mlEmu = (int)Math.Round(SpacingConverter.ParsePointsSigned(value) * 12700.0);
+                    var mlEmu = (int)Math.Round(SpacingConverter.ParsePointsSigned(value) * EmuConverter.EmuPerPointF);
                     foreach (var para in shape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
@@ -1061,7 +1061,7 @@ public partial class PowerPointHandler
 
                 case "marginright" or "marr":
                 {
-                    var mrEmu = (int)Math.Round(SpacingConverter.ParsePointsSigned(value) * 12700.0);
+                    var mrEmu = (int)Math.Round(SpacingConverter.ParsePointsSigned(value) * EmuConverter.EmuPerPointF);
                     foreach (var para in shape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
@@ -2488,9 +2488,9 @@ public partial class PowerPointHandler
                         };
                         var bevel = new Drawing.Bevel { Preset = preset };
                         if (bevelParts.Length >= 2)
-                            bevel.Width = (long)(ParseHelpers.SafeParseDouble(bevelParts[1], "bevel width") * 12700); // pt to EMU
+                            bevel.Width = (long)(ParseHelpers.SafeParseDouble(bevelParts[1], "bevel width") * EmuConverter.EmuPerPoint); // pt to EMU
                         if (bevelParts.Length >= 3)
-                            bevel.Height = (long)(ParseHelpers.SafeParseDouble(bevelParts[2], "bevel height") * 12700);
+                            bevel.Height = (long)(ParseHelpers.SafeParseDouble(bevelParts[2], "bevel height") * EmuConverter.EmuPerPoint);
                         cell3d.AppendChild(bevel);
                     }
                     break;
@@ -2585,7 +2585,7 @@ public partial class PowerPointHandler
         long cx = extents.Cx!.Value;  // width in EMU
         long cy = extents.Cy!.Value;  // height in EMU
 
-        const double emuPerPt = 12700.0;
+        const double emuPerPt = EmuConverter.EmuPerPointF;
         double shapeWidthPt = cx / emuPerPt;
         double shapeHeightPt = cy / emuPerPt;
 

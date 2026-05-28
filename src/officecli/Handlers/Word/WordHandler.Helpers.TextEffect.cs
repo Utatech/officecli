@@ -48,7 +48,7 @@ public partial class WordHandler
     {
         var parts = SplitEffectValue(value);
         var widthPt = ParseHelpers.SafeParseDouble(parts[0].Replace("pt", ""), "textOutline width");
-        var widthEmu = (long)(widthPt * 12700);
+        var widthEmu = (long)(widthPt * EmuConverter.EmuPerPoint);
         var color = parts.Length > 1 ? ParseHelpers.SanitizeColorForOoxml(parts[1]).Rgb : "000000";
 
         return $@"<w14:textOutline xmlns:w14=""{W14Ns}"" w14:w=""{widthEmu}"" w14:cap=""flat"" w14:cmpd=""sng"" w14:algn=""ctr""><w14:solidFill><w14:srgbClr w14:val=""{color}""/></w14:solidFill><w14:prstDash w14:val=""solid""/></w14:textOutline>";
@@ -99,8 +99,8 @@ public partial class WordHandler
         var distPt = parts.Length > 3 ? ParseHelpers.SafeParseDouble(parts[3], "shadow distance") : 3.0;
         var opacity = parts.Length > 4 ? ParseHelpers.SafeParseDouble(parts[4], "shadow opacity") : 40.0;
 
-        var blurEmu = (long)(blurPt * 12700);
-        var distEmu = (long)(distPt * 12700);
+        var blurEmu = (long)(blurPt * EmuConverter.EmuPerPoint);
+        var distEmu = (long)(distPt * EmuConverter.EmuPerPoint);
         var angleOoxml = (int)(angleDeg * 60000);
         var alphaVal = (int)(opacity * 1000);
 
@@ -120,7 +120,7 @@ public partial class WordHandler
         var radiusPt = parts.Length > 1 ? ParseHelpers.SafeParseDouble(parts[1], "glow radius") : 8.0;
         var opacity = parts.Length > 2 ? ParseHelpers.SafeParseDouble(parts[2], "glow opacity") : 75.0;
 
-        var radiusEmu = (long)(radiusPt * 12700);
+        var radiusEmu = (long)(radiusPt * EmuConverter.EmuPerPoint);
         var alphaVal = (int)(opacity * 1000);
 
         return $@"<w14:glow xmlns:w14=""{W14Ns}"" w14:rad=""{radiusEmu}""><w14:srgbClr w14:val=""{color}""><w14:alpha w14:val=""{alphaVal}""/></w14:srgbClr></w14:glow>";
@@ -185,7 +185,7 @@ public partial class WordHandler
                 {
                     var wAttr = child.GetAttributes().FirstOrDefault(a => a.LocalName == "w");
                     var widthEmu = long.TryParse(wAttr.Value, out var w) ? w : 0;
-                    var widthPt = widthEmu / 12700.0;
+                    var widthPt = widthEmu / EmuConverter.EmuPerPointF;
                     var colorMatch = System.Text.RegularExpressions.Regex.Match(
                         child.InnerXml, @"val=""([0-9A-Fa-f]{6})""");
                     var color = colorMatch.Success ? ParseHelpers.FormatHexColor(colorMatch.Groups[1].Value) : "";
@@ -235,11 +235,11 @@ public partial class WordHandler
                         child.InnerXml, @"val=""([0-9A-Fa-f]{6})""");
                     var color = colorMatch.Success ? ParseHelpers.FormatHexColor(colorMatch.Groups[1].Value) : "#000000";
                     var blurEmu = attrs.TryGetValue("blurRad", out var br) && long.TryParse(br, out var blurVal) ? blurVal : 0;
-                    var blurPt = blurEmu / 12700.0;
+                    var blurPt = blurEmu / EmuConverter.EmuPerPointF;
                     var dirVal = attrs.TryGetValue("dir", out var dir) && long.TryParse(dir, out var dirLong) ? dirLong : 0;
                     var angleDeg = dirVal / 60000.0;
                     var distEmu = attrs.TryGetValue("dist", out var dist) && long.TryParse(dist, out var distLong) ? distLong : 0;
-                    var distPt = distEmu / 12700.0;
+                    var distPt = distEmu / EmuConverter.EmuPerPointF;
                     // Read alpha (opacity) from inner srgbClr child
                     var alphaMatch = System.Text.RegularExpressions.Regex.Match(
                         child.InnerXml, @"alpha[^>]*val=""(\d+)""");
@@ -251,7 +251,7 @@ public partial class WordHandler
                 {
                     var radAttr = child.GetAttributes().FirstOrDefault(a => a.LocalName == "rad");
                     var radiusEmu = long.TryParse(radAttr.Value, out var r) ? r : 0;
-                    var radiusPt = radiusEmu / 12700.0;
+                    var radiusPt = radiusEmu / EmuConverter.EmuPerPointF;
                     var colorMatch = System.Text.RegularExpressions.Regex.Match(
                         child.InnerXml, @"val=""([0-9A-Fa-f]{6})""");
                     var color = colorMatch.Success ? ParseHelpers.FormatHexColor(colorMatch.Groups[1].Value) : "#000000";

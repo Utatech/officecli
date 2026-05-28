@@ -259,7 +259,7 @@ public partial class PowerPointHandler
 
         var color = ResolveFillColor(outline.GetFirstChild<Drawing.SolidFill>(), themeColors)
             ?? (themeColors.TryGetValue("dk1", out var dk1Hex) ? $"#{dk1Hex}" : "#000000");
-        var widthPt = outline.Width?.HasValue == true ? outline.Width.Value / 12700.0 : 1.0;
+        var widthPt = outline.Width?.HasValue == true ? outline.Width.Value / EmuConverter.EmuPerPointF : 1.0;
         if (widthPt < 0.5) widthPt = 0.5;
 
         var dash = outline.GetFirstChild<Drawing.PresetDash>();
@@ -351,8 +351,8 @@ public partial class PowerPointHandler
             }
         }
 
-        var blurPt = shadow.BlurRadius?.HasValue == true ? shadow.BlurRadius.Value / 12700.0 : 0;
-        var distPt = shadow.Distance?.HasValue == true ? shadow.Distance.Value / 12700.0 : 0;
+        var blurPt = shadow.BlurRadius?.HasValue == true ? shadow.BlurRadius.Value / EmuConverter.EmuPerPointF : 0;
+        var distPt = shadow.Distance?.HasValue == true ? shadow.Distance.Value / EmuConverter.EmuPerPointF : 0;
         var angleDeg = shadow.Direction?.HasValue == true ? shadow.Direction.Value / 60000.0 : 0;
         var angleRad = angleDeg * Math.PI / 180;
         var offsetX = distPt * Math.Cos(angleRad);
@@ -372,7 +372,7 @@ public partial class PowerPointHandler
 
         var alpha = glow.Descendants<Drawing.Alpha>().FirstOrDefault()?.Val?.Value ?? 40000;
         var opacity = alpha / 100000.0;
-        var radiusPt = glow.Radius?.HasValue == true ? glow.Radius.Value / 12700.0 : 5;
+        var radiusPt = glow.Radius?.HasValue == true ? glow.Radius.Value / EmuConverter.EmuPerPointF : 5;
 
         var rgb = glow.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
         string color;
@@ -430,7 +430,7 @@ public partial class PowerPointHandler
         if (refl == null) return "";
 
         // Distance between shape bottom and reflection start (EMU → pt)
-        var distPt = refl.Distance?.HasValue == true ? refl.Distance.Value / 12700.0 : 0;
+        var distPt = refl.Distance?.HasValue == true ? refl.Distance.Value / EmuConverter.EmuPerPointF : 0;
 
         // StartOpacity: initial opacity of reflected image (thousandths of a percent)
         var startOpacity = refl.StartOpacity?.HasValue == true ? refl.StartOpacity.Value / 100000.0 : 0.52;

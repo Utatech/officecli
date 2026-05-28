@@ -12,6 +12,21 @@ namespace OfficeCli.Core;
 /// </summary>
 internal static class EmuConverter
 {
+    /// <summary>EMU per point as an integer. 1 pt = 12700 EMU (exact).
+    /// Use for integer-arithmetic conversions where the operand is already int/long
+    /// (preserves the surrounding cast/truncation semantics).</summary>
+    public const int EmuPerPoint = 12700;
+
+    /// <summary>EMU per point as a double. 1 pt = 12700 EMU (exact).
+    /// Use for floating-point conversions (<c>pt * EmuPerPointF</c>, <c>emu / EmuPerPointF</c>).</summary>
+    public const double EmuPerPointF = 12700.0;
+
+    /// <summary>Convert points to EMU, rounding to the nearest EMU. 1 pt = 12700 EMU.</summary>
+    public static long PointsToEmu(double points) => (long)Math.Round(points * EmuPerPointF);
+
+    /// <summary>Convert EMU to points (no rounding). 1 pt = 12700 EMU.</summary>
+    public static double EmuToPoints(long emu) => emu / EmuPerPointF;
+
     /// <summary>
     /// Parse a dimension/position string into EMU (long).
     /// Supported formats: "914400" (raw EMU), "914400emu", "2.54cm", "1in", "72pt", "96px".
@@ -45,11 +60,11 @@ internal static class EmuConverter
         else if (value.EndsWith("pc", StringComparison.OrdinalIgnoreCase))
         {
             // pica = 12pt (CSS / typographic standard).
-            result = ParseWithUnit(value, 2, 12.0 * 12700.0, "pc");
+            result = ParseWithUnit(value, 2, 12.0 * EmuPerPointF, "pc");
         }
         else if (value.EndsWith("pt", StringComparison.OrdinalIgnoreCase))
         {
-            result = ParseWithUnit(value, 2, 12700.0, "pt");
+            result = ParseWithUnit(value, 2, EmuPerPointF, "pt");
         }
         else if (value.EndsWith("px", StringComparison.OrdinalIgnoreCase))
         {
@@ -179,7 +194,7 @@ internal static class EmuConverter
     /// </summary>
     public static string FormatLineWidth(long emu)
     {
-        var pt = emu / 12700.0;
+        var pt = emu / EmuPerPointF;
         return $"{pt:0.##}pt";
     }
 

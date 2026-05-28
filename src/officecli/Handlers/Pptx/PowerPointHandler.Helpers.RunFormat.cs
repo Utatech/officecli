@@ -31,7 +31,7 @@ public partial class PowerPointHandler
     /// </summary>
     private static string FormatPptIndentPoints(long emu)
     {
-        var pt = emu / 12700.0;
+        var pt = emu / EmuConverter.EmuPerPointF;
         return pt.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "pt";
     }
 

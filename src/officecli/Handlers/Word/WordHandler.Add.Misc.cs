@@ -1775,7 +1775,7 @@ public partial class WordHandler
         if (!string.IsNullOrEmpty(width))
         {
             try { lnWidthEmu = ParseEmu(width); } catch { lnWidthEmu = 0; }
-            if (lnWidthEmu == 0 && double.TryParse(width, out var pts)) lnWidthEmu = (long)Math.Round(pts * 12700);
+            if (lnWidthEmu == 0 && double.TryParse(width, out var pts)) lnWidthEmu = (long)Math.Round(pts * EmuConverter.EmuPerPoint);
         }
         string widthAttr = lnWidthEmu > 0 ? $" w=\"{lnWidthEmu}\"" : "";
         // Style: "none" emits a:noFill, anything else emits a:solidFill +

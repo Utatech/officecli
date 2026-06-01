@@ -675,12 +675,21 @@ internal static partial class ChartHelper
                     var targetCat = lowerKey is "labelrotation" or "xaxis.labelrotation" or "xaxislabelrotation";
                     var targetVal = lowerKey is "labelrotation" or "valaxis.labelrotation" or "valaxislabelrotation"
                         or "yaxis.labelrotation" or "yaxislabelrotation";
+                    bool scatterLike = plotArea2.GetFirstChild<C.ScatterChart>() != null
+                        || plotArea2.GetFirstChild<C.BubbleChart>() != null;
+                    var valAxes = plotArea2.Elements<C.ValueAxis>().ToList();
                     if (targetCat)
                     {
                         foreach (var axis in plotArea2.Elements<C.CategoryAxis>())
                             ApplyAxisLabelRotation(axis, rotAttrVal);
                         foreach (var axis in plotArea2.Elements<C.DateAxis>())
                             ApplyAxisLabelRotation(axis, rotAttrVal);
+                        // fuzzer-3: scatter / bubble charts have no catAx; the
+                        // x-axis IS the first <c:valAx>. Without this fallback,
+                        // `xaxis.labelRotation` on a scatter dump silently
+                        // no-ops at replay.
+                        if (scatterLike && valAxes.Count >= 1)
+                            ApplyAxisLabelRotation(valAxes[0], rotAttrVal);
                     }
                     if (targetVal)
                     {
@@ -695,9 +704,17 @@ internal static partial class ChartHelper
                         // rotate the secondary use `axis[@role=value2]` set
                         // with the per-axis `labelRotation` key, which the
                         // Reader emits symmetrically.
-                        var primaryVal = plotArea2.Elements<C.ValueAxis>().FirstOrDefault();
-                        if (primaryVal != null)
-                            ApplyAxisLabelRotation(primaryVal, rotAttrVal);
+                        if (scatterLike && valAxes.Count >= 2)
+                        {
+                            // y on scatter is the SECOND valAx (first is x).
+                            ApplyAxisLabelRotation(valAxes[1], rotAttrVal);
+                        }
+                        else
+                        {
+                            var primaryVal = valAxes.FirstOrDefault();
+                            if (primaryVal != null)
+                                ApplyAxisLabelRotation(primaryVal, rotAttrVal);
+                        }
                     }
                     break;
                 }

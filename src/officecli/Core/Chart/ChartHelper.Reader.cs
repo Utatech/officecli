@@ -418,8 +418,30 @@ internal static partial class ChartHelper
             var deg = catAxisBodyPr.Rotation.Value / 60000.0;
             node.Format["xaxis.labelRotation"] = deg.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         }
-        var valAxisFirst = plotArea.GetFirstChild<C.ValueAxis>();
-        var valAxisTxPrRot = valAxisFirst?.GetFirstChild<C.TextProperties>();
+        // fuzzer-3: scatter / bubble charts have no <c:catAx> — both axes are
+        // <c:valAx>. Reading only the FIRST valAx as the y-axis silently drops
+        // the x-axis labelRotation (and the symmetric case for the second
+        // valAx as y on non-scatter charts already worked because it WAS the
+        // first valAx). Disambiguate via the chart type: scatter/bubble place
+        // the X axis FIRST among valAx siblings, all other chart types only
+        // have one valAx and it's the Y axis.
+        var valAxisList = plotArea.Elements<C.ValueAxis>().ToList();
+        bool scatterLike = plotArea.GetFirstChild<C.ScatterChart>() != null
+            || plotArea.GetFirstChild<C.BubbleChart>() != null;
+        if (scatterLike && valAxisList.Count >= 1 && !node.Format.ContainsKey("xaxis.labelRotation"))
+        {
+            var xValAxBodyPr = valAxisList[0].GetFirstChild<C.TextProperties>()
+                ?.GetFirstChild<Drawing.BodyProperties>();
+            if (xValAxBodyPr?.Rotation?.HasValue == true)
+            {
+                var deg = xValAxBodyPr.Rotation.Value / 60000.0;
+                node.Format["xaxis.labelRotation"] = deg.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+            }
+        }
+        var valAxisForY = scatterLike && valAxisList.Count >= 2
+            ? valAxisList[1]
+            : valAxisList.FirstOrDefault();
+        var valAxisTxPrRot = valAxisForY?.GetFirstChild<C.TextProperties>();
         var valAxisBodyPr = valAxisTxPrRot?.GetFirstChild<Drawing.BodyProperties>();
         if (valAxisBodyPr?.Rotation?.HasValue == true)
         {

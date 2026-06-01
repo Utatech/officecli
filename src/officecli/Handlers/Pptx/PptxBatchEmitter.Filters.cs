@@ -174,6 +174,14 @@ public static partial class PptxBatchEmitter
             && imgVal.Equals("true", StringComparison.OrdinalIgnoreCase))
             result.Remove("image");
 
+        // bt-B1: when reflectionRaw was captured, it carries the full
+        // user-authored attrs (blurRad/stA/endA/dist/dir/sy/algn). The
+        // companion reflection=preset key is informational only and would
+        // overwrite the raw element with the preset shape if it ran later in
+        // the Set pass. Drop it so the raw passthrough is authoritative.
+        if (result.ContainsKey("reflectionRaw"))
+            result.Remove("reflection");
+
         return result;
     }
 }

@@ -1005,6 +1005,32 @@ public partial class PowerPointHandler
             // surface it unless the user descends to /shape[N]/r[1] explicitly.
             FillUnknownRunProps(firstRun.RunProperties, node);
         }
+        else
+        {
+            // Runless shape — `add shape --prop bold=… --prop size=… --prop color=…
+            // --prop font=…` lands those defaults on the first paragraph's
+            // <a:endParaRPr> (since there is no <a:r> to host an rPr). Surface
+            // them at shape level so dump→replay round-trips byte-equal.
+            var endRPrShape = shape.TextBody?.Elements<Drawing.Paragraph>()
+                .FirstOrDefault()?.GetFirstChild<Drawing.EndParagraphRunProperties>();
+            if (endRPrShape != null)
+            {
+                var epLatin = endRPrShape.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
+                var epEa = endRPrShape.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
+                var epCs = endRPrShape.GetFirstChild<Drawing.ComplexScriptFont>()?.Typeface?.Value;
+                if (epLatin != null) { node.Format["font"] = epLatin; node.Format["font.latin"] = epLatin; }
+                if (epEa != null) node.Format["font.ea"] = epEa;
+                if (epCs != null) node.Format["font.cs"] = epCs;
+                if (endRPrShape.FontSize?.Value is { } epSz)
+                    node.Format["size"] = $"{epSz / 100.0:0.##}pt";
+                if (endRPrShape.Bold?.HasValue == true)
+                    node.Format["bold"] = endRPrShape.Bold.Value;
+                if (endRPrShape.Italic?.HasValue == true)
+                    node.Format["italic"] = endRPrShape.Italic.Value;
+                var epColor = ReadColorFromFill(endRPrShape.GetFirstChild<Drawing.SolidFill>());
+                if (epColor != null) node.Format["color"] = epColor;
+            }
+        }
 
         // Shape-level hyperlink (on NonVisualDrawingProperties). Route through
         // the shared ReadHyperlinkOnClickUrl helper so named-action targets

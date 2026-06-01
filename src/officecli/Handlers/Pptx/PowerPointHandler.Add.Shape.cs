@@ -165,55 +165,82 @@ public partial class PowerPointHandler
                 // CONSISTENCY(font-dotted-alias): mirror Set's font.<attr> aliases
                 // (commit 80fb739e). Without these, `add shape --prop font.name=Arial`
                 // silently dropped while `set --prop font.name=Arial` succeeded.
+                //
+                // Shape-level run defaults must also survive when the shape was
+                // created without inline text. CreateTextShape emits a runless
+                // `<a:p/>` for empty-text shapes, so the foreach-Run loops below
+                // had no targets and silently dropped bold / size / color / font
+                // on `add shape --prop bold=false --prop size=68pt …`. Fall
+                // back to a seeded endParaRPr (same CT_TextCharacterProperties
+                // base type as RunProperties — FontSize / Bold / Italic /
+                // SolidFill child / LatinFont / EastAsianFont apply uniformly)
+                // on the first paragraph so the props round-trip through
+                // dump→replay.
+                List<OpenXmlCompositeElement> RunPropTargets()
+                {
+                    var targets = new List<OpenXmlCompositeElement>();
+                    var runs = newShape.Descendants<Drawing.Run>().ToList();
+                    if (runs.Count > 0)
+                    {
+                        foreach (var r in runs)
+                            targets.Add(r.RunProperties ?? (r.RunProperties = new Drawing.RunProperties()));
+                        return targets;
+                    }
+                    var firstPara = newShape.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();
+                    if (firstPara == null) return targets;
+                    var endRPr = firstPara.GetFirstChild<Drawing.EndParagraphRunProperties>();
+                    if (endRPr == null)
+                    {
+                        endRPr = new Drawing.EndParagraphRunProperties { Language = "en-US" };
+                        firstPara.AppendChild(endRPr);
+                    }
+                    targets.Add(endRPr);
+                    return targets;
+                }
+                static void SetFontSize(OpenXmlCompositeElement rPr, int sizeVal)
+                {
+                    if (rPr is Drawing.RunProperties r) r.FontSize = sizeVal;
+                    else if (rPr is Drawing.EndParagraphRunProperties e) e.FontSize = sizeVal;
+                }
+                static void SetBold(OpenXmlCompositeElement rPr, bool b)
+                {
+                    if (rPr is Drawing.RunProperties r) r.Bold = b;
+                    else if (rPr is Drawing.EndParagraphRunProperties e) e.Bold = b;
+                }
+                static void SetItalic(OpenXmlCompositeElement rPr, bool i)
+                {
+                    if (rPr is Drawing.RunProperties r) r.Italic = i;
+                    else if (rPr is Drawing.EndParagraphRunProperties e) e.Italic = i;
+                }
                 if (properties.TryGetValue("size", out var sizeStr)
                     || properties.TryGetValue("fontSize", out sizeStr)
                     || properties.TryGetValue("fontsize", out sizeStr)
                     || properties.TryGetValue("font.size", out sizeStr))
                 {
                     var sizeVal = (int)Math.Round(ParseFontSize(sizeStr) * 100);
-                    foreach (var run in newShape.Descendants<Drawing.Run>())
-                    {
-                        var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
-                        rProps.FontSize = sizeVal;
-                    }
+                    foreach (var rProps in RunPropTargets()) SetFontSize(rProps, sizeVal);
                 }
                 if (properties.TryGetValue("bold", out var boldStr)
                     || properties.TryGetValue("font.bold", out boldStr))
                 {
                     var isBold = IsTruthy(boldStr);
-                    foreach (var run in newShape.Descendants<Drawing.Run>())
-                    {
-                        var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
-                        rProps.Bold = isBold;
-                    }
+                    foreach (var rProps in RunPropTargets()) SetBold(rProps, isBold);
                 }
                 if (properties.TryGetValue("italic", out var italicStr)
                     || properties.TryGetValue("font.italic", out italicStr))
                 {
                     var isItalic = IsTruthy(italicStr);
-                    foreach (var run in newShape.Descendants<Drawing.Run>())
-                    {
-                        var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
-                        rProps.Italic = isItalic;
-                    }
+                    foreach (var rProps in RunPropTargets()) SetItalic(rProps, isItalic);
                 }
                 if (properties.TryGetValue("color", out var colorVal)
                     || properties.TryGetValue("font.color", out colorVal))
                 {
-                    foreach (var run in newShape.Descendants<Drawing.Run>())
+                    foreach (var rProps in RunPropTargets())
                     {
-                        var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
                         rProps.RemoveAllChildren<Drawing.SolidFill>();
                         var solidFill = BuildSolidFill(colorVal);
-                        if (rProps is OpenXmlCompositeElement composite)
-                        {
-                            if (!composite.AddChild(solidFill, throwOnError: false))
-                                rProps.AppendChild(solidFill);
-                        }
-                        else
-                        {
+                        if (!rProps.AddChild(solidFill, throwOnError: false))
                             rProps.AppendChild(solidFill);
-                        }
                     }
                 }
 
@@ -221,9 +248,8 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("font", out var font)
                     || properties.TryGetValue("font.name", out font))
                 {
-                    foreach (var run in newShape.Descendants<Drawing.Run>())
+                    foreach (var rProps in RunPropTargets())
                     {
-                        var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
                         rProps.Append(new Drawing.LatinFont { Typeface = font });
                         rProps.Append(new Drawing.EastAsianFont { Typeface = font });
                         ReorderDrawingRunProperties(rProps);
@@ -234,9 +260,8 @@ public partial class PowerPointHandler
                 // order is enforced below via ReorderDrawingRunProperties.
                 if (properties.TryGetValue("font.latin", out var fontLatin))
                 {
-                    foreach (var run in newShape.Descendants<Drawing.Run>())
+                    foreach (var rProps in RunPropTargets())
                     {
-                        var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
                         rProps.RemoveAllChildren<Drawing.LatinFont>();
                         rProps.Append(new Drawing.LatinFont { Typeface = fontLatin });
                         ReorderDrawingRunProperties(rProps);
@@ -246,9 +271,8 @@ public partial class PowerPointHandler
                     || properties.TryGetValue("font.eastasia", out fontEa)
                     || properties.TryGetValue("font.eastasian", out fontEa))
                 {
-                    foreach (var run in newShape.Descendants<Drawing.Run>())
+                    foreach (var rProps in RunPropTargets())
                     {
-                        var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
                         rProps.RemoveAllChildren<Drawing.EastAsianFont>();
                         rProps.Append(new Drawing.EastAsianFont { Typeface = fontEa });
                         ReorderDrawingRunProperties(rProps);
@@ -258,9 +282,8 @@ public partial class PowerPointHandler
                     || properties.TryGetValue("font.complexscript", out fontCs)
                     || properties.TryGetValue("font.complex", out fontCs))
                 {
-                    foreach (var run in newShape.Descendants<Drawing.Run>())
+                    foreach (var rProps in RunPropTargets())
                     {
-                        var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
                         rProps.RemoveAllChildren<Drawing.ComplexScriptFont>();
                         rProps.Append(new Drawing.ComplexScriptFont { Typeface = fontCs });
                         ReorderDrawingRunProperties(rProps);

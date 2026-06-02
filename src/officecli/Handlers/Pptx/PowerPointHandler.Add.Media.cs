@@ -235,10 +235,26 @@ public partial class PowerPointHandler
                 // docs stay byte-identical. contain/cover require image and
                 // container dimensions; if either is unknown, we fall back
                 // to a bare stretch.
-                var fillMode = (properties.GetValueOrDefault("fill", "stretch") ?? "stretch")
+                // bt-2: accept `fillMode` as dump→replay-aligned alias for
+                // `fill`. NodeBuilder PictureToNode emits `fillMode=tile|…`,
+                // matching the OOXML semantic; the historical `fill` key
+                // stays as a user-facing alias.
+                var fillMode = (properties.GetValueOrDefault("fillMode")
+                                ?? properties.GetValueOrDefault("fillmode")
+                                ?? properties.GetValueOrDefault("fill", "stretch")
+                                ?? "stretch")
                     .Trim().ToLowerInvariant();
                 if (fillMode == "tile")
                 {
+                    // bt-2: tile-axis sx/sy/tx/ty/algn/flip are persistable
+                    // attributes on <a:tile>. Previously AddPicture only
+                    // accepted a single `tilescale` (applied to both axes)
+                    // plus tilealign / tileflip — sx/sy could not be
+                    // distinguished, and tx/ty were inaccessible. NodeBuilder
+                    // now emits tileSx / tileSy / tileTx / tileTy as raw
+                    // permille (matching the OOXML attribute units) so the
+                    // round-trip is byte-stable. The legacy tilescale path
+                    // remains as a single-axis convenience.
                     double tileScale = 1.0;
                     if (properties.TryGetValue("tilescale", out var tsStr)
                         && double.TryParse(tsStr, System.Globalization.NumberStyles.Float,
@@ -251,7 +267,23 @@ public partial class PowerPointHandler
                         Flip = Drawing.TileFlipValues.None,
                         Alignment = Drawing.RectangleAlignmentValues.TopLeft,
                     };
-                    if (properties.TryGetValue("tilealign", out var taStr))
+                    static int? ParseTileAxis(string? raw)
+                    {
+                        if (string.IsNullOrWhiteSpace(raw)) return null;
+                        return int.TryParse(raw.Trim(), System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
+                    }
+                    if (ParseTileAxis(properties.GetValueOrDefault("tileSx") ?? properties.GetValueOrDefault("tilesx")) is int sx)
+                        tile.HorizontalRatio = sx;
+                    if (ParseTileAxis(properties.GetValueOrDefault("tileSy") ?? properties.GetValueOrDefault("tilesy")) is int sy)
+                        tile.VerticalRatio = sy;
+                    if (ParseTileAxis(properties.GetValueOrDefault("tileTx") ?? properties.GetValueOrDefault("tiletx")) is int tx)
+                        tile.HorizontalOffset = tx;
+                    if (ParseTileAxis(properties.GetValueOrDefault("tileTy") ?? properties.GetValueOrDefault("tilety")) is int ty)
+                        tile.VerticalOffset = ty;
+                    if (properties.TryGetValue("tilealign", out var taStr)
+                        || properties.TryGetValue("tileAlgn", out taStr)
+                        || properties.TryGetValue("tilealgn", out taStr))
                     {
                         tile.Alignment = taStr.Trim().ToLowerInvariant() switch
                         {
@@ -267,7 +299,8 @@ public partial class PowerPointHandler
                             _ => Drawing.RectangleAlignmentValues.TopLeft,
                         };
                     }
-                    if (properties.TryGetValue("tileflip", out var tfStr))
+                    if (properties.TryGetValue("tileflip", out var tfStr)
+                        || properties.TryGetValue("tileFlip", out tfStr))
                     {
                         tile.Flip = tfStr.Trim().ToLowerInvariant() switch
                         {

@@ -2221,6 +2221,31 @@ public partial class PowerPointHandler
                 node.Format["crop"] = $"{cl / 1000.0:0.###},{ct / 1000.0:0.###},{cr / 1000.0:0.###},{cb / 1000.0:0.###}";
         }
 
+        // bt-2: blipFill mode <a:tile .../> — PictureToNode previously
+        // surfaced only srcRect (crop). Without this readback every
+        // <a:tile> collapsed into a default <a:stretch> on round-trip
+        // (full-bleed image instead of repeated swatch).
+        var picTile = pic.BlipFill?.GetFirstChild<Drawing.Tile>();
+        if (picTile != null)
+        {
+            node.Format["fillMode"] = "tile";
+            // Sx/Sy default to 100000 (100% — same scale as source). Emit only
+            // when present; AddPicture's tilescale single-axis fallback uses
+            // 1.0 absent input.
+            if (picTile.HorizontalRatio?.HasValue == true)
+                node.Format["tileSx"] = picTile.HorizontalRatio.Value;
+            if (picTile.VerticalRatio?.HasValue == true)
+                node.Format["tileSy"] = picTile.VerticalRatio.Value;
+            if (picTile.HorizontalOffset?.HasValue == true)
+                node.Format["tileTx"] = picTile.HorizontalOffset.Value;
+            if (picTile.VerticalOffset?.HasValue == true)
+                node.Format["tileTy"] = picTile.VerticalOffset.Value;
+            if (picTile.Alignment?.HasValue == true)
+                node.Format["tileAlgn"] = picTile.Alignment.InnerText;
+            if (picTile.Flip?.HasValue == true)
+                node.Format["tileFlip"] = picTile.Flip.InnerText;
+        }
+
         return node;
     }
 

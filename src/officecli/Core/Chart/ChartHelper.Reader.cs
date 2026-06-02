@@ -1589,12 +1589,13 @@ internal static partial class ChartHelper
     /// <summary>
     /// Read any fill child under a chart spPr container (plotArea, chartArea, etc.)
     /// as a Setter-compatible spec string. Recognises a:solidFill (→ "#RRGGBB"),
-    /// a:gradFill (→ "c1-c2[:angle]" via ReadGradientSpec), a:noFill (→ "none").
-    /// Pattern fills and blip fills round-trip as the original literal hint
-    /// "pattern" / "blip"; BuildFillElement cannot reconstruct those, so the
-    /// Setter will fall back to solid black — at least the key is no longer
-    /// silently dropped. Returns null when the container has no recognised fill
-    /// child (caller emits nothing — matches pre-fix behaviour for that case).
+    /// a:gradFill (→ "c1-c2[:angle]" via ReadGradientSpec), a:noFill (→ "none"),
+    /// a:pattFill (→ "pattern:preset[:fg[:bg]]" — same compound form as shape
+    /// fills, BuildFillElement reconstructs the full a:pattFill on replay).
+    /// Blip fills still round-trip as the literal "blip" hint (no source-part
+    /// reconstruction); replay falls back to solid black for that case.
+    /// Returns null when the container has no recognised fill child (caller
+    /// emits nothing — matches pre-fix behaviour for that case).
     /// </summary>
     internal static string? ReadFillSpec(OpenXmlCompositeElement? spPr)
     {
@@ -1604,8 +1605,43 @@ internal static partial class ChartHelper
         var grad = spPr.GetFirstChild<Drawing.GradientFill>();
         if (grad != null) return ReadGradientSpec(grad);
         if (spPr.GetFirstChild<Drawing.NoFill>() != null) return "none";
-        if (spPr.GetFirstChild<Drawing.PatternFill>() != null) return "pattern";
+        var patt = spPr.GetFirstChild<Drawing.PatternFill>();
+        if (patt != null) return ReadPatternSpec(patt);
         if (spPr.GetFirstChild<Drawing.BlipFill>() != null) return "blip";
+        return null;
+    }
+
+    /// <summary>
+    /// Read a PatternFill as the dump/replay spec form
+    /// "pattern:preset[:fg[:bg]]". Mirrors the shape-side
+    /// PowerPointHandler.NodeBuilder pattern emit (which uses "preset:fg:bg"
+    /// without the leading hint); the "pattern:" prefix here lets
+    /// BuildFillElement disambiguate from solid colors and gradients —
+    /// chartFill/plotFill are flat string slots, not a dedicated key like
+    /// shape's "pattern" property. Drops alpha; returns "pattern" if the
+    /// preset attribute is missing (still recoverable as a coarse hint).
+    /// </summary>
+    internal static string ReadPatternSpec(Drawing.PatternFill patt)
+    {
+        var preset = patt.Preset?.InnerText;
+        if (string.IsNullOrEmpty(preset)) return "pattern";
+        var fgEl = patt.GetFirstChild<Drawing.ForegroundColor>();
+        var bgEl = patt.GetFirstChild<Drawing.BackgroundColor>();
+        var fg = ReadColorFromColorContainer(fgEl);
+        var bg = ReadColorFromColorContainer(bgEl);
+        if (fg == null && bg == null) return $"pattern:{preset}";
+        if (bg == null) return $"pattern:{preset}:{fg}";
+        if (fg == null) fg = "000000";
+        return $"pattern:{preset}:{fg}:{bg}";
+    }
+
+    private static string? ReadColorFromColorContainer(OpenXmlCompositeElement? el)
+    {
+        if (el == null) return null;
+        var rgb = el.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+        if (rgb != null) return ParseHelpers.FormatHexColor(rgb);
+        var scheme = el.GetFirstChild<Drawing.SchemeColor>()?.Val;
+        if (scheme?.HasValue == true) return scheme.InnerText;
         return null;
     }
 
@@ -1639,6 +1675,18 @@ internal static partial class ChartHelper
         var linear = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
         if (linear?.Angle?.HasValue == true)
             spec += ":" + (linear.Angle.Value / 60000);
+        // R63 t-2: <a:lin scaled="0"> round-tripped to scaled="1" because the
+        // Builder hard-codes Scaled=true on rebuild. Capture an explicit
+        // scaled=false as a ":s0" suffix so BuildFillElement / ApplySeriesGradient
+        // can honor the source attribute. Default (omitted or scaled="1")
+        // emits nothing — preserves existing dumps. Force the angle slot
+        // (":0" when absent) so the suffix doesn't collide with the
+        // LastIndexOf(':') angle parser.
+        if (linear?.Scaled?.HasValue == true && linear.Scaled.Value == false)
+        {
+            if (linear.Angle?.HasValue != true) spec += ":0";
+            spec += ":s0";
+        }
         return spec;
     }
 

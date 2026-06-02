@@ -1251,6 +1251,34 @@ internal static partial class ChartHelper
         if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
             return new Drawing.NoFill();
 
+        // Pattern fill: "pattern:preset[:fg[:bg]]" — mirrors the spec form
+        // emitted by ReadPatternSpec on dump. Bare "pattern" (preset lost on
+        // read) and bare "blip" still degrade to solid black so unknown hints
+        // don't crash batch replay (preserves R62 5b91dfbe "key survives" goal).
+        if (value.StartsWith("pattern:", StringComparison.OrdinalIgnoreCase))
+            return BuildChartPatternFill(value.Substring("pattern:".Length));
+        if (value.Equals("pattern", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("blip", StringComparison.OrdinalIgnoreCase))
+        {
+            var fallback = new Drawing.SolidFill();
+            fallback.AppendChild(BuildChartColorElement("000000"));
+            return fallback;
+        }
+
+        // R63 t-2: pre-strip an optional trailing ":sN" scaled marker so the
+        // existing LastIndexOf(':') angle parser keeps working. Reader emits
+        // ":s0" only for <a:lin scaled="0"> sources; absent means scaled=true.
+        bool scaledFlag = true;
+        if (value.EndsWith(":s0", StringComparison.Ordinal))
+        {
+            scaledFlag = false;
+            value = value[..^3];
+        }
+        else if (value.EndsWith(":s1", StringComparison.Ordinal))
+        {
+            value = value[..^3];
+        }
+
         // Check if it's a gradient (contains - but not a single hex with alpha like 80FF0000)
         var colonIdx = value.LastIndexOf(':');
         var colorPart = colonIdx > 6 ? value[..colonIdx] : value;
@@ -1274,7 +1302,7 @@ internal static partial class ChartHelper
                 gsLst.AppendChild(gs);
             }
             gradFill.AppendChild(gsLst);
-            gradFill.AppendChild(new Drawing.LinearGradientFill { Angle = anglePart * 60000, Scaled = true });
+            gradFill.AppendChild(new Drawing.LinearGradientFill { Angle = anglePart * 60000, Scaled = scaledFlag });
             return gradFill;
         }
 
@@ -1282,6 +1310,112 @@ internal static partial class ChartHelper
         var solidFill = new Drawing.SolidFill();
         solidFill.AppendChild(BuildChartColorElement(value));
         return solidFill;
+    }
+
+    /// <summary>
+    /// Build a chart-area / plot-area a:pattFill from the compound spec body
+    /// "preset[:fg[:bg]]" (the "pattern:" prefix is stripped by the caller).
+    /// Mirrors PowerPointHandler.Fill.BuildPatternFill semantics: empty fg
+    /// defaults to 000000, empty bg defaults to FFFFFF. Unknown preset names
+    /// silently fall through to Drawing.PresetPatternValues.Percent50 — same
+    /// "key survives, looks vaguely right" graceful-degradation contract as
+    /// the bare "pattern" / "blip" fallback above. Schema order: fgClr → bgClr.
+    /// </summary>
+    private static Drawing.PatternFill BuildChartPatternFill(string body)
+    {
+        var parts = body.Split(':');
+        var presetName = parts.Length > 0 ? parts[0].Trim() : "";
+        var fg = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1].Trim() : "000000";
+        var bg = parts.Length > 2 && !string.IsNullOrWhiteSpace(parts[2]) ? parts[2].Trim() : "FFFFFF";
+
+        var patternFill = new Drawing.PatternFill { Preset = ParseChartPresetPattern(presetName) };
+        var fgClr = new Drawing.ForegroundColor();
+        fgClr.AppendChild(BuildChartColorElement(fg));
+        patternFill.AppendChild(fgClr);
+        var bgClr = new Drawing.BackgroundColor();
+        bgClr.AppendChild(BuildChartColorElement(bg));
+        patternFill.AppendChild(bgClr);
+        return patternFill;
+    }
+
+    /// <summary>
+    /// Parse an a:pattFill preset attribute (e.g. "pct50", "ltHorz", "cross").
+    /// Case-insensitive lookup over the OOXML preset names. Unknown names
+    /// default to Percent50 — same graceful-degradation policy as the
+    /// "pattern" / "blip" bare-hint fallback. Mirrors ParsePresetPattern in
+    /// PowerPointHandler.Fill.cs (intentional duplicate to keep ChartHelper
+    /// self-contained — chart fill builders do not depend on the pptx handler).
+    /// </summary>
+    private static readonly Dictionary<string, Drawing.PresetPatternValues> _chartPresetPatternMap
+        = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["pct5"] = Drawing.PresetPatternValues.Percent5,
+            ["pct10"] = Drawing.PresetPatternValues.Percent10,
+            ["pct20"] = Drawing.PresetPatternValues.Percent20,
+            ["pct25"] = Drawing.PresetPatternValues.Percent25,
+            ["pct30"] = Drawing.PresetPatternValues.Percent30,
+            ["pct40"] = Drawing.PresetPatternValues.Percent40,
+            ["pct50"] = Drawing.PresetPatternValues.Percent50,
+            ["pct60"] = Drawing.PresetPatternValues.Percent60,
+            ["pct70"] = Drawing.PresetPatternValues.Percent70,
+            ["pct75"] = Drawing.PresetPatternValues.Percent75,
+            ["pct80"] = Drawing.PresetPatternValues.Percent80,
+            ["pct90"] = Drawing.PresetPatternValues.Percent90,
+            ["horz"] = Drawing.PresetPatternValues.Horizontal,
+            ["vert"] = Drawing.PresetPatternValues.Vertical,
+            ["ltHorz"] = Drawing.PresetPatternValues.LightHorizontal,
+            ["ltVert"] = Drawing.PresetPatternValues.LightVertical,
+            ["ltDnDiag"] = Drawing.PresetPatternValues.LightDownwardDiagonal,
+            ["ltUpDiag"] = Drawing.PresetPatternValues.LightUpwardDiagonal,
+            ["dkHorz"] = Drawing.PresetPatternValues.DarkHorizontal,
+            ["dkVert"] = Drawing.PresetPatternValues.DarkVertical,
+            ["dkDnDiag"] = Drawing.PresetPatternValues.DarkDownwardDiagonal,
+            ["dkUpDiag"] = Drawing.PresetPatternValues.DarkUpwardDiagonal,
+            ["narHorz"] = Drawing.PresetPatternValues.NarrowHorizontal,
+            ["narVert"] = Drawing.PresetPatternValues.NarrowVertical,
+            ["dnDiag"] = Drawing.PresetPatternValues.DownwardDiagonal,
+            ["upDiag"] = Drawing.PresetPatternValues.UpwardDiagonal,
+            ["wdUpDiag"] = Drawing.PresetPatternValues.WideUpwardDiagonal,
+            ["wdDnDiag"] = Drawing.PresetPatternValues.WideDownwardDiagonal,
+            ["dashHorz"] = Drawing.PresetPatternValues.DashedHorizontal,
+            ["dashVert"] = Drawing.PresetPatternValues.DashedVertical,
+            ["dashDnDiag"] = Drawing.PresetPatternValues.DashedDownwardDiagonal,
+            ["dashUpDiag"] = Drawing.PresetPatternValues.DashedUpwardDiagonal,
+            ["cross"] = Drawing.PresetPatternValues.Cross,
+            ["diagCross"] = Drawing.PresetPatternValues.DiagonalCross,
+            ["smGrid"] = Drawing.PresetPatternValues.SmallGrid,
+            ["lgGrid"] = Drawing.PresetPatternValues.LargeGrid,
+            ["smConfetti"] = Drawing.PresetPatternValues.SmallConfetti,
+            ["lgConfetti"] = Drawing.PresetPatternValues.LargeConfetti,
+            ["horzBrick"] = Drawing.PresetPatternValues.HorizontalBrick,
+            ["diagBrick"] = Drawing.PresetPatternValues.DiagonalBrick,
+            ["solidDmnd"] = Drawing.PresetPatternValues.SolidDiamond,
+            ["openDmnd"] = Drawing.PresetPatternValues.OpenDiamond,
+            ["dotDmnd"] = Drawing.PresetPatternValues.DottedDiamond,
+            ["plaid"] = Drawing.PresetPatternValues.Plaid,
+            ["sphere"] = Drawing.PresetPatternValues.Sphere,
+            ["weave"] = Drawing.PresetPatternValues.Weave,
+            ["divot"] = Drawing.PresetPatternValues.Divot,
+            ["shingle"] = Drawing.PresetPatternValues.Shingle,
+            ["wave"] = Drawing.PresetPatternValues.Wave,
+            ["trellis"] = Drawing.PresetPatternValues.Trellis,
+            ["zigZag"] = Drawing.PresetPatternValues.ZigZag,
+        };
+
+    private static Drawing.PresetPatternValues ParseChartPresetPattern(string name)
+    {
+        // Case-insensitive lookup by camelCase XML token (what ReadPatternSpec
+        // emits via Preset.InnerText). Also accept the SDK enum member name
+        // (e.g. "Percent50") so anything Enum.ToString() could have produced
+        // is round-trip safe. Unknown presets fall back to Percent50 — same
+        // "key survives" graceful-degradation as the bare "pattern" hint.
+        if (_chartPresetPatternMap.TryGetValue(name, out var v)) return v;
+        foreach (var kv in _chartPresetPatternMap)
+        {
+            if (string.Equals(kv.Value.ToString(), name, StringComparison.OrdinalIgnoreCase))
+                return kv.Value;
+        }
+        return Drawing.PresetPatternValues.Percent50;
     }
 
     /// <summary>

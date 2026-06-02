@@ -1015,10 +1015,15 @@ internal static partial class ChartHelper
                     var cSpPr = chartSpace!.GetFirstChild<C.ChartShapeProperties>()
                         ?? (OpenXmlCompositeElement?)chartSpace.GetFirstChild<C.ShapeProperties>();
                     if (cSpPr == null) { cSpPr = new C.ShapeProperties(); chartSpace.InsertAfter(cSpPr, chart); }
-                    // Replace fill but keep outline
+                    // Replace fill but keep outline. Sweep every fill variant
+                    // so re-running chartFill (e.g. pattern → solid) doesn't
+                    // leave a stale a:pattFill / a:blipFill behind that would
+                    // tie-break ahead of the new fill on render.
                     cSpPr.RemoveAllChildren<Drawing.SolidFill>();
                     cSpPr.RemoveAllChildren<Drawing.GradientFill>();
                     cSpPr.RemoveAllChildren<Drawing.NoFill>();
+                    cSpPr.RemoveAllChildren<Drawing.PatternFill>();
+                    cSpPr.RemoveAllChildren<Drawing.BlipFill>();
                     cSpPr.PrependChild(BuildFillElement(value));
                     break;
                 }
@@ -3529,6 +3534,18 @@ internal static partial class ChartHelper
             if (existingSpPr?.GetFirstChild<Drawing.GradientFill>() != null)
                 return;
         }
+        // R63 t-2: pre-strip optional ":sN" scaled marker (mirrors BuildFillElement).
+        bool scaledFlag = true;
+        if (gradientSpec.EndsWith(":s0", StringComparison.Ordinal))
+        {
+            scaledFlag = false;
+            gradientSpec = gradientSpec[..^3];
+        }
+        else if (gradientSpec.EndsWith(":s1", StringComparison.Ordinal))
+        {
+            gradientSpec = gradientSpec[..^3];
+        }
+
         var anglePart = 0;
         var colorsPart = gradientSpec;
         var colonIdx = gradientSpec.LastIndexOf(':');
@@ -3561,7 +3578,7 @@ internal static partial class ChartHelper
         gradFill.AppendChild(new Drawing.LinearGradientFill
         {
             Angle = anglePart * 60000, // degrees to 60000ths
-            Scaled = true
+            Scaled = scaledFlag
         });
 
         var spPr = GetOrCreateSeriesShapeProperties(series);

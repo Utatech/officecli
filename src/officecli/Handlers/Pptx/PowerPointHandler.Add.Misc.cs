@@ -97,6 +97,16 @@ public partial class PowerPointHandler
                 long cxnCy = properties.TryGetValue("height", out var ch) ? ParseEmu(ch) : 0;
                 var cxnFlipH = false;
                 var cxnFlipV = false;
+                // Explicit flipH / flipV props mirror the shape Add convention
+                // (Add.Shape routes "fliph"/"flipv" through SetRunOrShapeProperties).
+                // Connectors previously dropped them as unsupported, so a
+                // right-to-left diagonal connector could never be authored and the
+                // SVG always drew top-left→bottom-right. The HTML renderer already
+                // honors <a:xfrm flipH/flipV>; this just lets users set it.
+                if ((properties.TryGetValue("flipH", out var cxnFlipHRaw) || properties.TryGetValue("fliph", out cxnFlipHRaw))
+                    && IsTruthy(cxnFlipHRaw)) cxnFlipH = true;
+                if ((properties.TryGetValue("flipV", out var cxnFlipVRaw) || properties.TryGetValue("flipv", out cxnFlipVRaw))
+                    && IsTruthy(cxnFlipVRaw)) cxnFlipV = true;
                 if ((hasFrom || hasTo) && !(hasX && hasY && hasW && hasH))
                 {
                     var startRef = properties.GetValueOrDefault("from")

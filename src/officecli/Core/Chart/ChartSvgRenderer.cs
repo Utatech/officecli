@@ -64,6 +64,8 @@ internal partial class ChartSvgRenderer
     public int ValFontPx { get; set; } = 9;
     public int CatFontPx { get; set; } = 9;
     public int DataLabelFontPx { get; set; } = 8;
+    // <c:dLblPos> for bar/column labels: inEnd|outEnd|ctr|inBase. Synced from ChartInfo.
+    public string DataLabelPos { get; set; } = "outEnd";
     public int AxisTickCount { get; set; } = 4;
 
     // CONSISTENCY(html-encode): shared plain entity-encoder lives in Core/HtmlPreviewHelper.
@@ -244,8 +246,32 @@ internal partial class ChartSvgRenderer
                         if (showDataLabels && barH > DataLabelFontPx)
                         {
                             var vlabel = LabelText(rawVal, val);
-                            var lx = val >= 0 ? bx + barW + 3 : bx - 3;
-                            var anchor = val >= 0 ? "start" : "end";
+                            // Honor <c:dLblPos>: outEnd places the label just past the
+                            // bar tip; inEnd inside the bar near the tip; ctr at the
+                            // bar's midpoint; inBase near the zero baseline. Without
+                            // this, inEnd and outEnd produced identical coordinates.
+                            var barEnd = val >= 0 ? bx + barW : bx;
+                            var barBase = val >= 0 ? bx : bx + barW;
+                            double lx; string anchor;
+                            switch (DataLabelPos)
+                            {
+                                case "inEnd":
+                                    lx = val >= 0 ? barEnd - 3 : barEnd + 3;
+                                    anchor = val >= 0 ? "end" : "start";
+                                    break;
+                                case "ctr":
+                                    lx = bx + barW / 2;
+                                    anchor = "middle";
+                                    break;
+                                case "inBase":
+                                    lx = val >= 0 ? barBase + 3 : barBase - 3;
+                                    anchor = val >= 0 ? "start" : "end";
+                                    break;
+                                default: // outEnd (Office default)
+                                    lx = val >= 0 ? barEnd + 3 : barEnd - 3;
+                                    anchor = val >= 0 ? "start" : "end";
+                                    break;
+                            }
                             sb.AppendLine($"        <text class=\"chart-data-label\" x=\"{lx:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"{ValueColor}\" font-size=\"{DataLabelFontPx}\" text-anchor=\"{anchor}\" dominant-baseline=\"middle\">{vlabel}</text>");
                         }
                     }
@@ -1602,6 +1628,10 @@ internal partial class ChartSvgRenderer
         public bool ShowDataLabelVal { get; set; }
         public bool ShowDataLabelPercent { get; set; }
         public bool ShowDataLabelCatName { get; set; }
+        // <c:dLblPos val="inEnd|outEnd|ctr|inBase"/> — drives where the label sits
+        // relative to the bar end. Default "outEnd" matches Office's grouped-bar
+        // default; "inEnd" places it inside the bar near its end.
+        public string DataLabelPos { get; set; } = "outEnd";
         public double HoleRatio { get; set; }
         public bool IsStacked { get; set; }
         public bool IsPercent { get; set; }
@@ -1814,6 +1844,12 @@ internal partial class ChartSvgRenderer
             info.ShowDataLabelPercent = IsOn("showPercent");
             info.ShowDataLabelCatName = IsOn("showCatName");
             info.ShowDataLabels = info.ShowDataLabelVal || info.ShowDataLabelPercent || info.ShowDataLabelCatName;
+            // <c:dLblPos> — inEnd (inside, near end) vs outEnd (beyond end) etc.
+            // Office places insideEnd labels within the bar and outsideEnd just
+            // past the bar tip; ignoring it made both positions identical.
+            var dLblPosEl = dLbls.Elements().FirstOrDefault(e => e.LocalName == "dLblPos");
+            var dLblPosVal = dLblPosEl?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+            if (!string.IsNullOrEmpty(dLblPosVal)) info.DataLabelPos = dLblPosVal!;
         }
 
         // Doughnut hole size
@@ -1959,7 +1995,12 @@ internal partial class ChartSvgRenderer
         }
         else
         {
-            info.HasLegend = info.Series.Count > 1 || isPieType || info.ReferenceLines.Count > 0;
+            // No <c:legend> element → PowerPoint/Excel render NO legend. Real
+            // Office keys legend visibility strictly off the element's presence,
+            // not off a series-count heuristic (verified vs Microsoft Office:
+            // legend=none charts show no legend even with 2+ series). Guessing
+            // here made legend=none still draw the Alpha/Beta swatches.
+            info.HasLegend = false;
         }
 
         // Marker shapes, smooth, and dash per series
@@ -2276,6 +2317,7 @@ internal partial class ChartSvgRenderer
         if (info.GridlineColor != null) GridColor = info.GridlineColor;
         if (info.AxisLineColor != null) AxisLineColor = info.AxisLineColor;
         DataLabelFontPx = info.DataLabelFontPx;
+        DataLabelPos = info.DataLabelPos;
 
         // Increase right margin for long axis labels (e.g. "$1,000,000")
         if (!string.IsNullOrEmpty(info.ValNumFmt) && marginRight < 30)

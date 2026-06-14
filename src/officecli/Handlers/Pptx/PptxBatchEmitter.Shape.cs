@@ -336,7 +336,7 @@ public static partial class PptxBatchEmitter
     }
 
     private static void EmitConnector(PowerPointHandler ppt, DocumentNode cxnNode, string parentSlidePath,
-                                      List<BatchItem> items, SlideEmitContext ctx)
+                                      List<BatchItem> items, SlideEmitContext ctx, int connectorOrdinal)
     {
         // R57 bt-4: depth=3 mirrors EmitShape — surface paragraph→run→inline
         // runs so the connector-label single-run-collapse heuristic below can
@@ -424,12 +424,18 @@ public static partial class PptxBatchEmitter
         if (deferredArrows.Count > 0)
         {
             // Connector's replay path: parentSlidePath + /connector[K] where
-            // K is the source connector's positional index within
-            // shapeTree.Elements<ConnectionShape>(). Reuse the source path's
-            // tail segment — it already encodes that positional index in
-            // BuildElementPathSegment-emitted form (`connector[K]` or
-            // `connector[@id=N]`). Both forms route through SetConnector.
-            var replayPath = ReplayPathForCxn(cxnNode.Path ?? "", parentSlidePath);
+            // K is the connectorOrdinal the caller assigned when walking the
+            // parent's children in document order — the SAME ordinal the
+            // `add connector` above lands at. Build it positionally rather
+            // than reusing cxnNode.Path: NodeBuilder emits the source path in
+            // @id= form (`/slide[N]/group[@id=10]/connector[@id=532]`), and
+            // group descendants have their cNvPr id reassigned on replay (see
+            // CONSISTENCY(group-id-autoassign)), so an @id= selector for a
+            // group-nested connector resolves to nothing — the deferred
+            // arrowhead `set` then fails with "No connector found with @id=N".
+            // The positional form survives because AddConnector lands the
+            // connector at exactly connectorOrdinal under parentSlidePath.
+            var replayPath = $"{parentSlidePath}/connector[{connectorOrdinal}]";
             ctx.DeferredLinks.Add(new BatchItem
             {
                 Command = "set",
@@ -443,28 +449,13 @@ public static partial class PptxBatchEmitter
         // path resolves through AddParagraph / AddRun's connector branches.
         if ((full.Children?.Count ?? 0) > 0)
         {
-            var cxnReplayPath = ReplayPathForCxn(cxnNode.Path ?? "", parentSlidePath);
+            // Same positional rationale as the deferred-arrow path above:
+            // group-nested connectors carry an @id= source path whose id is
+            // reassigned on replay, so label paragraph/run ops must target the
+            // connector by its document-order ordinal under parentSlidePath.
+            var cxnReplayPath = $"{parentSlidePath}/connector[{connectorOrdinal}]";
             EmitTextBody(ppt, full, cxnReplayPath, items, seededFirstParaHasRun: seededFirstParaHasRun, ctx: ctx);
         }
-    }
-
-    // Translate a NodeBuilder-emitted cxnNode.Path (which may use the
-    // @id= form via BuildElementPathSegment) into a positional replay
-    // path under <paramref name="parentSlidePath"/>. The source's cNvPr id
-    // is preserved through AcquireShapeId's high-range floor, so the
-    // @id= form still resolves at replay; falling back to a positional
-    // form keeps parity with TranslateConnectorEndpoint.
-    private static string ReplayPathForCxn(string sourcePath, string parentSlidePath)
-    {
-        // Strip the source's /slide[N] prefix, replace with the replay's
-        // parentSlidePath. Group-nested cxn paths (containing /group[K]/)
-        // are passed through verbatim — TranslateConnectorEndpoint's
-        // CONSISTENCY(group-id-autoassign) note explains that group
-        // children resolve positionally on Set.
-        var m = System.Text.RegularExpressions.Regex.Match(sourcePath,
-            @"^/slide\[\d+\](?<tail>(?:/group\[\d+\])*/connector\[[^\]]+\])$");
-        if (!m.Success) return sourcePath;
-        return parentSlidePath + m.Groups["tail"].Value;
     }
 
     private static void TranslateConnectorEndpoint(PowerPointHandler ppt,
@@ -587,7 +578,7 @@ public static partial class PptxBatchEmitter
                     break;
                 case "connector":
                     ord["connector"] = ord.GetValueOrDefault("connector", 0) + 1;
-                    EmitConnector(ppt, child, replayPath, items, ctx);
+                    EmitConnector(ppt, child, replayPath, items, ctx, ord["connector"]);
                     break;
                 case "group":
                     ord["group"] = ord.GetValueOrDefault("group", 0) + 1;

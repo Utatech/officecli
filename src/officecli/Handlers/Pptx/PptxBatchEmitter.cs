@@ -535,7 +535,7 @@ public static partial class PptxBatchEmitter
         // in a per-slide buffer and flush AFTER the rest of the loop so
         // every referenced shape has been added by then. Z-order regresses
         // for the rare cross-referencing case but no slide gets corrupted.
-        var deferredConnectors = new List<DocumentNode>();
+        var deferredConnectors = new List<(DocumentNode Node, int Ordinal)>();
 
         var ord = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var child in fullSlide.Children)
@@ -578,7 +578,7 @@ public static partial class PptxBatchEmitter
                     // added by the time AddConnector resolves the
                     // /slide[N]/shape[K] form.
                     ord["connector"] = ord.GetValueOrDefault("connector", 0) + 1;
-                    deferredConnectors.Add(child);
+                    deferredConnectors.Add((child, ord["connector"]));
                     break;
                 case "group":
                     ord["group"] = ord.GetValueOrDefault("group", 0) + 1;
@@ -659,8 +659,8 @@ public static partial class PptxBatchEmitter
 
         // R48: flush deferred connectors — every referenced <p:sp> now
         // exists in the rebuilt slide so /slide[N]/shape[K] resolves.
-        foreach (var cxnChild in deferredConnectors)
-            EmitConnector(ppt, cxnChild, slidePath, items, ctx);
+        foreach (var (cxnChild, cxnOrdinal) in deferredConnectors)
+            EmitConnector(ppt, cxnChild, slidePath, items, ctx, cxnOrdinal);
 
         // Raw-XML passthrough for exotic transition / timing content. Emitted
         // AFTER all shape/animation rows so they replace anything the semantic

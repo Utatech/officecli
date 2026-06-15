@@ -618,7 +618,18 @@ public partial class PowerPointHandler
                 var categories = ChartHelper.ParseCategories(properties);
                 var seriesData = ChartHelper.ParseSeriesData(properties);
 
-                if (seriesData.Count == 0)
+                // allowEmpty: dump→replay of a genuinely dataless chart (0 series —
+                // an unpopulated template doughnut/pie the author never filled).
+                // PowerPoint keeps such charts; BuildChartSpace produces a valid
+                // empty chart frame (its series loops simply don't run). The
+                // data-required throw is an interactive-use convenience, so the
+                // emitter sets allowEmpty to round-trip the empty chart faithfully.
+                bool chartAllowEmpty = (properties.TryGetValue("allowEmpty", out var caE)
+                                         || properties.TryGetValue("allowempty", out caE))
+                                        && IsTruthy(caE);
+                properties.Remove("allowEmpty");
+                properties.Remove("allowempty");
+                if (seriesData.Count == 0 && !chartAllowEmpty)
                     throw new ArgumentException("Chart requires data. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
                         "or series1=\"Revenue:100,200,300\"");
 

@@ -432,7 +432,18 @@ public partial class WordHandler
                 if (isChecked)
                     checkBox.AppendChild(new Checked { Val = new OnOffValue(true) });
                 ffData.AppendChild(checkBox);
-                text = isChecked ? "\u2612" : "\u2610";
+                // BUG-DUMP-FFCHECKBOX-GLYPH: only synthesize the \u2610/\u2611 result glyph
+                // for a typed `add formfield type=checkbox` that gives no explicit
+                // result. The dump emits the cached glyph as text= when the source
+                // stored one, and text="" when the source FORMCHECKBOX has no
+                // cached result (Word renders the box from the ffData checkBox, not
+                // from a literal glyph). Unconditionally writing the glyph made a
+                // round-tripped empty checkbox gain a literal \u2610 \u2014 113 of them in a
+                // medical-device questionnaire \u2014 whose font metrics differ from the
+                // ffData-rendered box, shifting form/table layout. Honor the
+                // explicit result instead (the text variable already holds it).
+                if (!ciProps.ContainsKey("text") && !ciProps.ContainsKey("value"))
+                    text = isChecked ? "\u2612" : "\u2610";
                 break;
             }
             case "dropdown" or "drop":

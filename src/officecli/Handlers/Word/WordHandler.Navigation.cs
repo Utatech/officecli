@@ -4292,6 +4292,17 @@ public partial class WordHandler
             var pmRtl = pmrpForDump.GetFirstChild<RightToLeftText>();
             if (pmRtl != null)
                 node.Format["markRPr.rtl"] = TryReadOnOff(pmRtl.Val) != false;
+            // BUG-DUMP-MARKRPR-SNAPGRID: the ¶-mark's <w:snapToGrid> toggle. On a
+            // doc with a <w:docGrid>, the mark's snapToGrid="0" keeps the
+            // terminating line off the grid (sets its height); the markRPr
+            // allowlist surfaced bold/size/color/position/rtl/… but never
+            // snapToGrid, so dump→batch dropped it and the line re-snapped to the
+            // grid, shifting metrics and reflowing the page. Emit a canonical bool
+            // (CT_OnOff); ApplyRunFormatting's snapToGrid case restores the
+            // explicit OFF form on replay.
+            var pmSnap = pmrpForDump.GetFirstChild<SnapToGrid>();
+            if (pmSnap != null)
+                node.Format["markRPr.snapToGrid"] = TryReadOnOff(pmSnap.Val) != false;
             var hl = pmrpForDump.GetFirstChild<Highlight>();
             if (hl?.Val?.HasValue == true) node.Format["markRPr.highlight"] = hl.Val.InnerText;
             // BUG-DUMP-R27-1: ¶-mark character shading (<w:pPr><w:rPr><w:shd/>).

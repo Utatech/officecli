@@ -1165,6 +1165,23 @@ public partial class WordHandler
                     lang.Remove();
                 return true;
             }
+            case "snaptogrid":
+                // <w:snapToGrid> run/¶-mark toggle (CT_OnOff). On a doc with a
+                // <w:docGrid>, snapToGrid="0" tells Word NOT to snap this run (or
+                // the paragraph mark) to the line grid — which changes the line's
+                // height. The OFF form is the meaningful one to round-trip: a
+                // ¶-mark <w:rPr><w:snapToGrid w:val="0"/> set the terminating
+                // line's height, and dropping it re-snapped the line to the grid,
+                // shifting metrics and reflowing the page. The run-level toggle
+                // already round-trips via the generic CT_OnOff reader + this case;
+                // it's also reachable through the markRPr.* dispatch (Add.Text.cs)
+                // which previously fell to `default: return false` and dropped it.
+                props.RemoveAllChildren<SnapToGrid>();
+                if (IsTruthy(value))
+                    InsertRunPropInSchemaOrder(props, new SnapToGrid());
+                else
+                    InsertRunPropInSchemaOrder(props, new SnapToGrid { Val = OnOffValue.FromBoolean(false) });
+                return true;
             default:
                 return false;
         }

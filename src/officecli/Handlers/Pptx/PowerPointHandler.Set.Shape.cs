@@ -1007,6 +1007,45 @@ public partial class PowerPointHandler
                     outline.AppendChild(new Drawing.TailEnd { Type = ParseLineEndType(value) });
                     break;
                 }
+                // R4-5: arrowhead size. @w (width) and @len (length) take the
+                // sm/med/lg enum (CT_LineEndProperties). Set both to the same
+                // size token so the marker scales uniformly. Targets the existing
+                // headEnd/tailEnd (or creates one if none yet, defaulting Type=none
+                // so size-only Set on a bare line still produces a sized marker).
+                case "headend.size" or "headEnd.size":
+                case "tailend.size" or "tailEnd.size":
+                {
+                    if (!TryParseLineEndSize(value, out var wEnum, out var lEnum))
+                    { unsupported.Add($"{key} (value '{value}' must be one of: small/sm, medium/med, large/lg)"); break; }
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var outline = EnsureOutline(spPr);
+                    bool isHead = key.StartsWith("head", StringComparison.OrdinalIgnoreCase);
+                    if (isHead)
+                    {
+                        var headEnd = outline.GetFirstChild<Drawing.HeadEnd>();
+                        if (headEnd == null)
+                        {
+                            headEnd = new Drawing.HeadEnd { Type = Drawing.LineEndValues.None };
+                            var existingTailEnd = outline.GetFirstChild<Drawing.TailEnd>();
+                            if (existingTailEnd != null) outline.InsertBefore(headEnd, existingTailEnd);
+                            else outline.AppendChild(headEnd);
+                        }
+                        headEnd.Width = wEnum;
+                        headEnd.Length = lEnum;
+                    }
+                    else
+                    {
+                        var tailEnd = outline.GetFirstChild<Drawing.TailEnd>();
+                        if (tailEnd == null)
+                        {
+                            tailEnd = new Drawing.TailEnd { Type = Drawing.LineEndValues.None };
+                            outline.AppendChild(tailEnd);
+                        }
+                        tailEnd.Width = wEnum;
+                        tailEnd.Length = lEnum;
+                    }
+                    break;
+                }
                 case "from" or "startshape":
                 case "to" or "endshape":
                 {

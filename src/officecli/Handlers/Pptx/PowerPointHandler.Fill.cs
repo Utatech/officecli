@@ -850,6 +850,25 @@ public partial class PowerPointHandler
                 $"Invalid line end type: '{name}'. Valid values: triangle, arrow, stealth, diamond, oval, none.")
         };
 
+    // R4-5: map a size token to the @w (width) and @len (length) line-end enums.
+    // CT_LineEndProperties models width and length as SEPARATE enums, so resolve
+    // both. Returns false for an unrecognized token.
+    private static bool TryParseLineEndSize(string value,
+        out Drawing.LineEndWidthValues width, out Drawing.LineEndLengthValues length)
+    {
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case "small" or "sm" or "s":
+                width = Drawing.LineEndWidthValues.Small; length = Drawing.LineEndLengthValues.Small; return true;
+            case "medium" or "med" or "m":
+                width = Drawing.LineEndWidthValues.Medium; length = Drawing.LineEndLengthValues.Medium; return true;
+            case "large" or "lg" or "l" or "big":
+                width = Drawing.LineEndWidthValues.Large; length = Drawing.LineEndLengthValues.Large; return true;
+            default:
+                width = Drawing.LineEndWidthValues.Medium; length = Drawing.LineEndLengthValues.Medium; return false;
+        }
+    }
+
     // full prstDash enum (was clipped to 6 of 11 values; sysDot/sysDash/
     // sysDashDot/sysDashDotDot/lgDashDotDot threw "Invalid lineDash"). Mirrors
     // ST_PresetLineDashVal (DrawingML §20.1.10.49). Accepts canonical OOXML

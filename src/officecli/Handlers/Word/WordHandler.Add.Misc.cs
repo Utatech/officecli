@@ -1052,7 +1052,12 @@ public partial class WordHandler
                      "font.csTheme", "shading", "w",
                      "vanish", "specVanish", "webHidden",
                      "bold.cs", "italic.cs", "size.cs",
-                     "lang", "lang.ea", "lang.cs",
+                     // The latin/default language slot is dumped as lang.latin
+                     // (canonical), not bare `lang`; without it a hyperlink run's
+                     // <w:lang w:val="…"/> was reported UNSUPPORTED and dropped on
+                     // replay even though `add run` accepts it. lang.val is the
+                     // other latin-slot alias ApplyRunFormatting recognizes.
+                     "lang", "lang.latin", "lang.val", "lang.ea", "lang.cs",
                      "caps", "smallCaps", "strike", "dstrike",
                      "outline", "shadow", "emboss", "imprint",
                      "highlight", "vertAlign", "position", "kern",

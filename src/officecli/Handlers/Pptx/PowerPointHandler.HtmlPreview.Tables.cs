@@ -96,7 +96,6 @@ public partial class PowerPointHandler
             var rowH = row.Height?.Value ?? 0;
             var rowStyle = rowH > 0 ? $" style=\"height:{Units.EmuToPt(rowH):0.##}pt\"" : "";
             sb.AppendLine($"        <tr{rowStyle}>");
-            int skipCols = 0;
             int colIndex = 0;  // Tracked for the new per-cell TableStyleResolver below.
             bool isHeaderRow = hasFirstRow && rowIndex == 0;
             bool isBandedOdd = hasBandRow && (!hasFirstRow ? rowIndex % 2 == 0 : rowIndex > 0 && (rowIndex - 1) % 2 == 0);
@@ -299,31 +298,22 @@ public partial class PowerPointHandler
                 if (gridSpan > 1) spanAttrs += $" colspan=\"{gridSpan}\"";
                 if (rowSpan > 1) spanAttrs += $" rowspan=\"{rowSpan}\"";
 
-                // Skip merged continuation cells. hMerge cells consume one slot
-                // of the active skipCols counter; vMerge cells (vertical merge
-                // continuation) do not affect horizontal accounting. All three
-                // skip paths still advance colIndex by 1 — the continuation
-                // cells occupy a real column position in the grid, they just
-                // don't render their own <td>.
+                // Skip merged continuation cells. The colIndex advance for the
+                // whole horizontal span is done ONCE on the anchor's `colIndex +=
+                // gridSpan` at the end of the loop body; continuation cells must
+                // therefore NOT advance colIndex again (doing so over-counted the
+                // span by gridSpan-1 and shifted banding/firstCol/lastCol for every
+                // cell after a horizontal merge). hMerge continuation cells just
+                // `continue` without rendering their own <td>; the anchor already
+                // accounted for their columns. vMerge continuation cells are a
+                // single-column rowspan body, so they DO advance colIndex by 1.
                 if (cell.HorizontalMerge?.Value == true)
-                {
-                    if (skipCols > 0) skipCols--;
-                    colIndex++;
                     continue;
-                }
                 if (cell.VerticalMerge?.Value == true)
                 {
                     colIndex++;
                     continue;
                 }
-                if (skipCols > 0)
-                {
-                    skipCols--;
-                    colIndex++;
-                    continue;
-                }
-
-                if (gridSpan > 1) skipCols = (int)gridSpan - 1;
 
                 var diagOverlay = "";
                 if (hasDiag)

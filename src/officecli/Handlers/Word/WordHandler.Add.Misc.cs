@@ -1447,15 +1447,20 @@ public partial class WordHandler
                 if (properties.TryGetValue(slotKey, out var slotVal))
                     ApplyRunFormatting(fieldRProps, slotKey, slotVal);
             }
-            if (properties.TryGetValue("bold", out var fb) && IsTruthy(fb))
-                fieldRProps.AppendChild(new Bold());
+            // BUG-DUMP-FIELDBOLD-FALSE: route bold through ApplyRunFormatting so an
+            // explicit OFF (<w:b w:val="0"/>) round-trips — a caption field
+            // (Table/Figure SEQ) under a bold Caption style turns bold off; the
+            // on-only path dropped that override and the caption re-inherited the
+            // style's bold, growing every caption line and reflowing the page.
+            if (properties.TryGetValue("bold", out var fb))
+                ApplyRunFormatting(fieldRProps, "bold", fb);
             // BUG-DUMP-R52-FIELDITALIC: italic/underline/strike on a field's
             // cached result (a title-page <SUBJECT> placeholder rendered italic)
             // were dropped — they were absent from AddField's vocabulary AND from
             // FieldAddSupportedFormatKeys, so the typed `add field` path shed them
             // and (being single-run) the field never took the rich raw-set route.
             // ApplyRunFormatting writes each in CT_RPr schema order.
-            if (properties.TryGetValue("italic", out var fi) && IsTruthy(fi))
+            if (properties.TryGetValue("italic", out var fi))
                 ApplyRunFormatting(fieldRProps, "italic", fi);
             if (properties.TryGetValue("underline", out var fu) && !string.IsNullOrEmpty(fu))
                 ApplyRunFormatting(fieldRProps, "underline", fu);

@@ -882,6 +882,7 @@ public partial class WordHandler
         for(var i=0;i<pgs.length;i++) if(pgs[i].contains(a)){pmap.push(a.id+'='+(i+1));break;}
       });
       applyPageFilter();
+      flushScreenshotPage();
       document.title='PAGES:'+pgs.length+(pmap.length?'|MAP:'+pmap.join(','):'');
     }
     else{setTimeout(positionFootnotes,0);setTimeout(wrapFloats,0);setTimeout(applyLineNumbers,0);setTimeout(applyPageFilter,0);setTimeout(function(){scalePages(false);},0);}
@@ -1023,6 +1024,24 @@ public partial class WordHandler
       if(!rSet.has(i+1))p.style.display='none';
     });
   }
+  // Single-page screenshot: clip the one visible page to its page box and drop
+  // the chrome (gray body padding, drop-shadow, rounded corners, wrapper margin)
+  // so the capture is flush, for ANY page (not just page 1) — matching pptx.
+  // The screenshot viewport is sized to the page's native pixels.
+  function flushScreenshotPage(){
+    if(!SCREENSHOT)return;
+    // offsetParent is null when the page OR its wrapper is display:none, so this
+    // counts only genuinely-visible pages (page-1 path hides wrappers; page-N
+    // path hides .page elements via applyPageFilter).
+    var vis=Array.prototype.filter.call(document.querySelectorAll('.page'),function(p){return p.offsetParent!==null;});
+    if(vis.length!==1)return;
+    var page=vis[0];
+    page.style.height=page.style.minHeight;page.style.overflow='hidden';
+    page.style.boxShadow='none';page.style.borderRadius='0';
+    document.body.style.padding='0';
+    var w=page.closest('.page-wrapper');if(w)w.style.margin='0';
+    document.querySelectorAll('.page-wrapper').forEach(function(pw){if(pw!==w)pw.style.display='none';});
+  }
   function _loadKatexLazy(cb){
     // Watch mode: doc may start formula-free (KaTeX tags omitted), then
     // gain a formula via SSE patch. Inject CSS + JS on demand; on load,
@@ -1113,18 +1132,12 @@ public partial class WordHandler
   if(SCREENSHOT){
     var rp=window._requestedPages;
     if(rp&&rp.length===1&&rp[0]===1){
-      var first=document.querySelector('.page');
-      if(first){
-        first.style.height=first.style.minHeight;first.style.overflow='hidden';
-        // Flush capture: the screenshot viewport is sized to the page's native
-        // pixels, so drop the page chrome (gray body padding, drop-shadow,
-        // rounded corners, wrapper centering margin) and the page fills the PNG.
-        document.body.style.padding='0';
-        first.style.boxShadow='none';first.style.borderRadius='0';
-        var _fw=first.closest('.page-wrapper');if(_fw)_fw.style.margin='0';
-      }
+      // Page 1 is the first .page before pagination — flush it directly, skipping
+      // the full paginate pass. Other single pages go through paginate and flush
+      // at its sync completion. flushScreenshotPage clips + drops the chrome.
       document.querySelectorAll('.page-wrapper:not(:first-of-type)').forEach(function(w){w.style.display='none';});
       positionFootnotes();wrapFloats();applyLineNumbers();
+      flushScreenshotPage();
     }else{paginate();}
   }else{setTimeout(paginate,100);}");
         sb.AppendLine("}");

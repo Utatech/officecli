@@ -575,7 +575,11 @@ public partial class PowerPointHandler
         bool hasExplicitColor = rp?.GetFirstChild<Drawing.SolidFill>() != null
             || rp?.GetFirstChild<Drawing.GradientFill>() != null
             || rp?.GetFirstChild<Drawing.SchemeColor>() != null
-            || rp?.GetFirstChild<Drawing.RgbColorModelHex>() != null;
+            || rp?.GetFirstChild<Drawing.RgbColorModelHex>() != null
+            // R51: an explicit <a:noFill/> means the glyph fill is transparent
+            // (hollow text). It counts as an explicit fill so the inherited
+            // cascade color fallback below does NOT bleed through.
+            || rp?.GetFirstChild<Drawing.NoFill>() != null;
         bool hasExplicitUnderline = rp?.Underline?.HasValue == true;
         var hlinkClick = rp?.GetFirstChild<Drawing.HyperlinkOnClick>();
         if (hlinkClick?.Id?.Value is string relId && part != null)
@@ -811,6 +815,18 @@ public partial class PowerPointHandler
                 var hlColor = ResolveFillColor(hlFill, themeColors);
                 if (hlColor != null)
                     styles.Add($"background-color:{hlColor}");
+            }
+
+            // R51: explicit <a:noFill/> on the run — the glyph interior is
+            // transparent (hollow text). Emit both color:transparent and
+            // -webkit-text-fill-color:transparent so the fill is suppressed even
+            // when a glyph outline (<a:ln> below) sets up paint-order:stroke fill.
+            // noFill + outline → hollow glyphs (outline visible, interior see-through);
+            // noFill + no outline → fully invisible (matches PowerPoint).
+            if (rp.GetFirstChild<Drawing.NoFill>() != null)
+            {
+                styles.Add("color:transparent");
+                styles.Add("-webkit-text-fill-color:transparent");
             }
 
             // Gradient text fill

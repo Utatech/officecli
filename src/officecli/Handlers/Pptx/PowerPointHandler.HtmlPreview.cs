@@ -426,30 +426,48 @@ public partial class PowerPointHandler
     private string GetSlideBackgroundCss(SlidePart slidePart, Dictionary<string, string> themeColors)
     {
         var slide = GetSlide(slidePart);
-        var bgPr = slide.CommonSlideData?.Background?.BackgroundProperties;
-        if (bgPr == null)
-        {
-            // Check slide layout and master for inherited background
-            var layoutBg = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.Background?.BackgroundProperties;
-            var masterBg = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.Background?.BackgroundProperties;
-            bgPr = layoutBg ?? masterBg;
-        }
-        if (bgPr == null)
-        {
-            // R4-3: a slide can style its background via <p:bgRef> (a theme
-            // background-fill-style index + a schemeClr) instead of explicit
-            // bgPr. bgPr is null in that case, so resolve the bgRef's scheme
-            // color against the theme map (same resolver the chart series use)
-            // and paint it; previously this fell through to "" → white.
-            var bgRef = slide.CommonSlideData?.Background?.GetFirstChild<BackgroundStyleReference>()
-                ?? slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.Background?.GetFirstChild<BackgroundStyleReference>()
-                ?? slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.Background?.GetFirstChild<BackgroundStyleReference>();
-            var bgRefColor = bgRef != null ? ResolveStyleMatrixRefColor(bgRef, themeColors) : null;
-            if (bgRefColor != null) return $"background:{bgRefColor};";
-            return "";
-        }
 
-        return BackgroundPropertiesToCss(bgPr, slidePart, themeColors);
+        // R40-BG2: per OOXML, a slide's OWN <p:bg> (whether <p:bgPr> or
+        // <p:bgRef>) always wins over inherited layout/master backgrounds.
+        // Resolve each level top-down; at every level "bgPr OR bgRef present
+        // wins before descending". Previously bgPr was collected across all
+        // three levels first, so a master bgPr could shadow the slide's own
+        // bgRef.
+        var slideCss = LevelBackgroundCss(slide.CommonSlideData?.Background, slidePart, themeColors);
+        if (slideCss != null) return slideCss;
+
+        var layoutCss = LevelBackgroundCss(
+            slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.Background, slidePart, themeColors);
+        if (layoutCss != null) return layoutCss;
+
+        var masterCss = LevelBackgroundCss(
+            slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.Background, slidePart, themeColors);
+        if (masterCss != null) return masterCss;
+
+        return "";
+    }
+
+    // R40-BG2: resolve a single level's background. At each level the explicit
+    // <p:bgPr> wins; otherwise a <p:bgRef> (theme background-fill-style index +
+    // schemeClr) is resolved against the theme map. Returns null when this level
+    // has no background at all, so the caller can descend to the next level.
+    private string? LevelBackgroundCss(Background? bg, SlidePart slidePart, Dictionary<string, string> themeColors)
+    {
+        if (bg == null) return null;
+
+        var bgPr = bg.BackgroundProperties;
+        if (bgPr != null)
+            return BackgroundPropertiesToCss(bgPr, slidePart, themeColors);
+
+        // R4-3: a level can style its background via <p:bgRef> instead of
+        // explicit bgPr. Resolve the bgRef's scheme color against the theme map.
+        var bgRef = bg.GetFirstChild<BackgroundStyleReference>();
+        if (bgRef != null)
+        {
+            var bgRefColor = ResolveStyleMatrixRefColor(bgRef, themeColors);
+            if (bgRefColor != null) return $"background:{bgRefColor};";
+        }
+        return null;
     }
 
     // R4-3: resolve a <p:bgRef>/<a:*Ref> style-matrix reference's color. The
@@ -463,6 +481,11 @@ public partial class PowerPointHandler
         if (schemeColor?.Val?.HasValue == true)
         {
             var schemeName = schemeColor.Val!.InnerText;
+            // R40-BG1: in a bgRef context, <a:schemeClr val="phClr"/> means
+            // "the theme's background anchor" = lt1 (bg1). phClr is never in the
+            // theme color map, so map it to lt1 before lookup (invisible on the
+            // default white-bg1 theme, wrong color on non-white-bg1 themes).
+            if (schemeName == "phClr") schemeName = "lt1";
             if (schemeName != null && themeColors.TryGetValue(schemeName, out var themeHex))
                 return ApplyColorTransforms(themeHex, schemeColor);
         }

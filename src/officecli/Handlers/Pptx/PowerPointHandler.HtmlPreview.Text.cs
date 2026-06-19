@@ -227,7 +227,8 @@ public partial class PowerPointHandler
             if (bulletAuto != null)
             {
                 int paraLevel = pProps?.Level?.Value ?? 0;
-                string schemeKey = (bulletAuto.Type?.HasValue == true ? bulletAuto.Type.Value.ToString() : "arabicPeriod") + "@" + paraLevel;
+                string schemeKey = (bulletAuto.Type?.HasValue == true && !string.IsNullOrEmpty(bulletAuto.Type.InnerText)
+                    ? bulletAuto.Type.InnerText : "arabicPeriod") + "@" + paraLevel;
                 if (lastAutoKey != schemeKey)
                 {
                     autoNumCounters[schemeKey] = 0;

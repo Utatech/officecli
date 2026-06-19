@@ -119,6 +119,14 @@ public partial class PowerPointHandler
                     hasExplicitFill = true;
                 }
 
+                // Explicit <a:noFill/> is an intentional "transparent" declaration
+                // that overrides any table-style band/header fill. PowerPoint shows
+                // the slide background through such a cell. Mark hasExplicitFill so
+                // the TableStyleResolver fill below is suppressed; emit no
+                // background: declaration (transparent).
+                if (tcPr?.GetFirstChild<Drawing.NoFill>() != null)
+                    hasExplicitFill = true;
+
                 // Resolve fill / text color / borders for this cell through
                 // the Core/TableStyles catalogue. Returns null for unknown
                 // style ids (custom styles, no style at all); in that case
@@ -253,14 +261,15 @@ public partial class PowerPointHandler
                 var marR = tcPr?.RightMargin?.Value;
                 var marT = tcPr?.TopMargin?.Value;
                 var marB = tcPr?.BottomMargin?.Value;
-                if (marL.HasValue || marR.HasValue || marT.HasValue || marB.HasValue)
-                {
-                    var pT = Units.EmuToPt(marT ?? 45720);
-                    var pR = Units.EmuToPt(marR ?? 91440);
-                    var pB = Units.EmuToPt(marB ?? 45720);
-                    var pL = Units.EmuToPt(marL ?? 91440);
-                    cellStyles.Add($"padding:{pT}pt {pR}pt {pB}pt {pL}pt");
-                }
+                // Always emit padding from OOXML defaults for absent attrs
+                // (marL=marR=91440 EMU=7.2pt, marT=marB=45720 EMU=3.6pt). The
+                // preview.css fallback (4px 6px) under-pads L/R to ~60% of the
+                // correct value, so an all-default cell rendered text too far left.
+                var pT = Units.EmuToPt(marT ?? 45720);
+                var pR = Units.EmuToPt(marR ?? 91440);
+                var pB = Units.EmuToPt(marB ?? 45720);
+                var pL = Units.EmuToPt(marL ?? 91440);
+                cellStyles.Add($"padding:{pT}pt {pR}pt {pB}pt {pL}pt");
 
                 // Paragraph alignment
                 var firstPara = cell.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();

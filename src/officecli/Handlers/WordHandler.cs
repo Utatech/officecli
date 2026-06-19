@@ -1158,6 +1158,25 @@ public partial class WordHandler : IDocumentHandler
             return;
         }
 
+        // Fast-path: a raw-set that inserts ONE <w:p> immediately before the
+        // body's trailing sectPr. The dump emits one such op per cross-paragraph
+        // field-span member (EmitCrossParagraphFieldMember) — e.g. 785 of them for
+        // a large back-of-book INDEX field, perfectly consecutive at end of batch.
+        // The generic path re-serializes the whole document part per op
+        // (rootElement.OuterXml + XDocument.Parse + InnerXml=) — O(part) each,
+        // turning a 7MB / 11k-paragraph batch into O(n²) (minutes). Insert on the
+        // live SDK DOM instead (O(fragment), O(1) via the append-monotonic cache).
+        // Same opt-not-behavior contract as the /styles fast-path: any deviation
+        // (xpath shape, missing body/sectPr, unparseable fragment) falls through.
+        if (lowerPath is "/document" or "/"
+            && (string.Equals(action, "before", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(action, "insertbefore", StringComparison.OrdinalIgnoreCase))
+            && xml != null
+            && TryInsertBodyParaBeforeSectPrFast(mainPart, xpath, xml))
+        {
+            return;
+        }
+
         if (lowerPath is "/document" or "/")
             rootElement = mainPart.Document ?? throw new InvalidOperationException("No document");
         else if (lowerPath is "/styles")
@@ -1411,6 +1430,59 @@ public partial class WordHandler : IDocumentHandler
             (_deferredRawSetRoots ??= new HashSet<OpenXmlPartRootElement>()).Add(styles);
         else
             styles.Save();
+        return true;
+    }
+
+    // Compiled matcher for the dump's cross-paragraph field-member xpath
+    // (/w:document/w:body/w:sectPr). See the body-para fast-path in RawSet.
+    private static readonly System.Text.RegularExpressions.Regex _bodySectPrXpath =
+        new(@"^/w:document/w:body/w:sectPr$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // Insert exactly one <w:p> immediately before the body's trailing sectPr on
+    // the live document DOM, bypassing the generic whole-part serialize/parse
+    // round-trip. Returns false (caller falls through to the generic path) for any
+    // xpath that is not the exact /w:document/w:body/w:sectPr shape, a missing
+    // body/sectPr, or a fragment the SDK cannot parse as a <w:p> — so it is a pure
+    // optimization with no behavior change. Gated to DeferSave (batch): outside a
+    // batch the generic path runs the per-op global id sweeps (paraId/docPr/sdt/
+    // bookmark) eagerly, and a verbatim <w:p> can carry those ids; under DeferSave
+    // those sweeps are deferred to FinalizeDeferredIds exactly as the generic
+    // DeferSave raw-set path defers them, so the fast path matches its behavior.
+    private bool TryInsertBodyParaBeforeSectPrFast(MainDocumentPart mainPart, string xpath, string xml)
+    {
+        if (!DeferSave) return false;
+        if (!_bodySectPrXpath.IsMatch(xpath)) return false;
+        var body = mainPart.Document?.Body;
+        if (body == null) return false;
+        // The body-level sectPr is always the last child of <w:body> (ECMA-376).
+        if (body.LastChild is not SectionProperties sectPr)
+            return false; // no trailing sectPr to anchor before — fall through
+        Paragraph newPara;
+        try { newPara = new Paragraph(xml); }
+        catch { return false; }
+        if (newPara.LocalName != "p") return false; // fragment must be a paragraph
+        // O(1) insert via the append-monotonic cache (mirrors AppendBodyParaFast):
+        // the cached last body paragraph sits right before sectPr, so
+        // InsertAfterSelf keeps sectPr last and avoids the SDK singly-linked
+        // list's O(N) InsertBefore predecessor scan (which made N consecutive
+        // member inserts O(N²)).
+        if (_bodyParaCount >= 0
+            && _lastBodyParagraph is Paragraph anchor
+            && ReferenceEquals(anchor.Parent, body)
+            && anchor.NextSibling() is SectionProperties)
+        {
+            anchor.InsertAfterSelf(newPara);
+            _bodyParaCount++;
+        }
+        else
+        {
+            // Cold cache / out-of-band mutation: O(N) insert + reseed.
+            sectPr.InsertBeforeSelf(newPara);
+            _bodyParaCount = body.Elements<Paragraph>().Count();
+        }
+        _lastBodyParagraph = newPara;
+        (_deferredRawSetRoots ??= new HashSet<OpenXmlPartRootElement>()).Add(mainPart.Document!);
         return true;
     }
 

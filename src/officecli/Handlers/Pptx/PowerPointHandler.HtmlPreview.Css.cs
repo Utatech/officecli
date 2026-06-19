@@ -338,8 +338,22 @@ public partial class PowerPointHandler
         var stops = gradFill.GradientStopList?.Elements<Drawing.GradientStop>().ToList();
         if (stops == null || stops.Count < 2) return "";
 
+        // Map the OOXML linear gradient angle to SVG x1/y1/x2/y2 in objectBoundingBox
+        // space (0..1). OOXML <a:lin ang> convention: 0° = left→right, 90° = top→bottom
+        // (clockwise). The unit direction vector is (cos θ, sin θ) with θ in OOXML
+        // degrees, so 0°→(1,0) horizontal and 90°→(0,1) vertical top→bottom. Anchor
+        // the gradient line at the center and project ±0.5 along that vector so the
+        // line spans the box. Default 90° (top→bottom) matches the fill SVG default.
+        var linear = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
+        var angleDeg = linear?.Angle?.HasValue == true ? linear.Angle.Value / 60000.0 : 90.0;
+        var rad = angleDeg * Math.PI / 180.0;
+        var dx = Math.Cos(rad) / 2.0;
+        var dy = Math.Sin(rad) / 2.0;
+        var x1 = 0.5 - dx; var y1 = 0.5 - dy;
+        var x2 = 0.5 + dx; var y2 = 0.5 + dy;
+
         var sb = new System.Text.StringBuilder();
-        sb.Append($"<linearGradient id=\"{id}\">");
+        sb.Append($"<linearGradient id=\"{id}\" x1=\"{x1:0.####}\" y1=\"{y1:0.####}\" x2=\"{x2:0.####}\" y2=\"{y2:0.####}\">");
         foreach (var gs in stops)
         {
             var color = ResolveGradientStopColor(gs, themeColors);

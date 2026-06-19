@@ -166,16 +166,22 @@ public partial class PowerPointHandler
         // in ParseOutline and degrades to solid #000000.
         var outlineGradFill = outline?.GetFirstChild<Drawing.GradientFill>();
         var parsedOutline = outline != null ? ParseOutline(outline, themeColors) : null;
+        // R23-B: a gradient outline used to always emit `border:Npt solid transparent`
+        // + `border-image:<gradient> 1`. But CSS `border-image` is IGNORED whenever
+        // `border-radius` is also set (spec) — so a roundRect (or any preset whose
+        // PresetGeometryToCss yields border-radius / a clip-path) rendered the
+        // gradient outline as a SQUARE solid-ish border. Defer rounded / non-rect
+        // gradient outlines to the SVG stroke overlay below (stroke=url(#grad)),
+        // mirroring the connector gradient-stroke path; plain rects keep border-image
+        // (which works there).
+        double gradOutlineW = 0;
         if (outlineGradFill != null)
         {
-            var lineW = outline!.Width?.HasValue == true
+            gradOutlineW = outline!.Width?.HasValue == true
                 ? outline.Width.Value / EmuConverter.EmuPerPointF : 1.0;
-            if (lineW < 0.5) lineW = 0.5;
-            var gradCss = GradientToCss(outlineGradFill, themeColors);
-            // border-image needs a non-zero transparent border to paint into.
-            styles.Add($"border:{lineW:0.##}pt solid transparent");
-            styles.Add($"border-image:{gradCss} 1");
-            // Suppress the solid-CSS and SVG-overlay outline paths below.
+            if (gradOutlineW < 0.5) gradOutlineW = 0.5;
+            // Suppress the solid-CSS and SVG-dashed outline paths below; the gradient
+            // is rendered either as border-image (plain rect) or SVG stroke (rounded).
             parsedOutline = null;
         }
         else if (parsedOutline != null && parsedOutline.Value.dashType == "solid")
@@ -263,6 +269,34 @@ public partial class PowerPointHandler
                 var clipPath = CustomGeometryToClipPath(custGeom);
                 if (!string.IsNullOrEmpty(clipPath))
                     clipPathCss = clipPath;
+            }
+        }
+
+        // R23-B: gradient outline — pick the render strategy now that geometry is
+        // known. Plain rect (no border-radius, no clip-path) keeps border-image
+        // (it renders correctly). Rounded / clipped geometry uses the SVG stroke
+        // overlay emitted in the post-div block (border-image is silently ignored
+        // when border-radius is present, which produced a square solid border).
+        string? gradOutlineSvg = null;
+        bool gradOutlineRounded = false;
+        if (outlineGradFill != null)
+        {
+            gradOutlineRounded = !string.IsNullOrEmpty(borderRadiusCss)
+                || !string.IsNullOrEmpty(clipPathCss);
+            if (!gradOutlineRounded)
+            {
+                var gradCss = GradientToCss(outlineGradFill, themeColors);
+                styles.Add($"border:{gradOutlineW:0.##}pt solid transparent");
+                styles.Add($"border-image:{gradCss} 1");
+            }
+            else
+            {
+                var gradId = $"shg{_markerCounter++}";
+                gradOutlineSvg = BuildSvgLinearGradient(outlineGradFill, gradId, themeColors, out _);
+                if (string.IsNullOrEmpty(gradOutlineSvg))
+                    gradOutlineSvg = null;
+                else
+                    gradOutlineSvg = "url(#" + gradId + ")|" + gradOutlineSvg;
             }
         }
 
@@ -564,6 +598,37 @@ public partial class PowerPointHandler
             if (!string.IsNullOrEmpty(columnStyle))
                 sb.Append("</div>");
             sb.Append("</div>");
+        }
+
+        // R23-B: SVG gradient-stroke overlay for rounded / clipped gradient outlines.
+        // border-image can't follow border-radius (CSS ignores it), so stroke a
+        // geometry-matching shape with stroke=url(#grad) — same approach the
+        // connector gradient stroke uses.
+        if (gradOutlineSvg != null)
+        {
+            var sep = gradOutlineSvg.IndexOf('|');
+            var strokeRef = gradOutlineSvg[..sep];
+            var gradDef = gradOutlineSvg[(sep + 1)..];
+            var bw = gradOutlineW;
+            sb.Append("<svg style=\"position:absolute;inset:0;width:100%;height:100%;overflow:visible\"><defs>");
+            sb.Append(gradDef);
+            sb.Append("</defs>");
+            if (!string.IsNullOrEmpty(clipPathCss) && clipPathCss.StartsWith("clip-path:polygon("))
+            {
+                var polyStr = clipPathCss["clip-path:polygon(".Length..^1];
+                var svgPoints = polyStr.Replace("%", "");
+                // viewBox 0..100 + non-scaling-stroke keeps the polygon in % space.
+                sb.Append("</svg>");
+                sb.Append($"<svg style=\"position:absolute;inset:0;width:100%;height:100%;overflow:visible\" viewBox=\"0 0 100 100\" preserveAspectRatio=\"none\"><defs>{gradDef}</defs>");
+                sb.Append($"<polygon points=\"{svgPoints}\" fill=\"none\" stroke=\"{strokeRef}\" stroke-width=\"{bw:0.##}pt\" vector-effect=\"non-scaling-stroke\"/>");
+            }
+            else
+            {
+                var rxMatch = System.Text.RegularExpressions.Regex.Match(borderRadiusCss, @"border-radius:([\d.]+)");
+                var rx = rxMatch.Success ? rxMatch.Groups[1].Value : "0";
+                sb.Append($"<rect x=\"{bw / 2:0.##}pt\" y=\"{bw / 2:0.##}pt\" width=\"calc(100% - {bw:0.##}pt)\" height=\"calc(100% - {bw:0.##}pt)\" rx=\"{rx}\" ry=\"{rx}\" fill=\"none\" stroke=\"{strokeRef}\" stroke-width=\"{bw:0.##}pt\"/>");
+            }
+            sb.Append("</svg>");
         }
 
         // SVG border overlay for non-solid outlines (dashed, dotted, dashDot etc.)

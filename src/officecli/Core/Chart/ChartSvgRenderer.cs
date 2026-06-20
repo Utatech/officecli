@@ -112,8 +112,16 @@ internal partial class ChartSvgRenderer
         List<(string Name, double Value, string Color, double WidthPt, string Dash)>? referenceLines = null,
         bool isWaterfall = false, List<ErrorBarInfo?>? errorBars = null,
         bool labelAsPercent = false, string? dataLabelNumFmt = null, int? ooxmlOverlap = null,
-        bool isReversed = false)
+        bool isReversed = false, List<Dictionary<int, string>>? perPointColors = null)
     {
+        // Per-data-point fill override (c:dPt): for series s, category idx c,
+        // return the explicit dPt color when present, else the per-series color.
+        // No dPt anywhere => behaves exactly as colors[s % colors.Count].
+        string BarFill(int s, int catIdx)
+            => perPointColors != null && s < perPointColors.Count
+               && perPointColors[s].TryGetValue(catIdx, out var pc)
+                ? pc : colors[s % colors.Count];
+
         var allValues = series.SelectMany(s => s.values).ToArray();
         if (allValues.Length == 0) return;
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
@@ -313,7 +321,7 @@ internal partial class ChartSvgRenderer
                         }
                         var by = oy + c * groupH + gap;
                         if (segW > 0.5)
-                            sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{segW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"{FillOpacity(s)}\"/>");
+                            sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{segW:0.#}\" height=\"{barH:0.#}\" fill=\"{BarFill(s, dataIdx)}\" opacity=\"{FillOpacity(s)}\"/>");
                         // Label at segment center — skip if segment narrower than ~2 chars to avoid overflow
                         if (showDataLabels && segW > DataLabelFontPx * 1.6)
                         {
@@ -332,7 +340,7 @@ internal partial class ChartSvgRenderer
                         var valX = ValToX(val);
                         var bx = Math.Min(plotZeroX, valX);
                         var by = oy + c * groupH + gap + (serCount - 1 - s) * pitchH;
-                        sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"{FillOpacity(s)}\"/>");
+                        sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{BarFill(s, dataIdx)}\" opacity=\"{FillOpacity(s)}\"/>");
                         // Data label at the bar's end (grouped horizontal bars).
                         // Mirrors the stacked-branch and vertical-column label logic
                         // which previously left non-stacked horizontal bars unlabeled.
@@ -540,7 +548,7 @@ internal partial class ChartSvgRenderer
                             if (s > 0)
                             {
                                 if (barH > 0.5)
-                                    sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"{FillOpacity(s)}\"/>");
+                                    sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{BarFill(s, c)}\" opacity=\"{FillOpacity(s)}\"/>");
                                 if (showDataLabels && barH > DataLabelFontPx + 2)
                                 {
                                     var vlabel = FormatAxisValue(rawVal, valNumFmt);
@@ -582,7 +590,7 @@ internal partial class ChartSvgRenderer
                                 negCursor += val;
                             }
                             if (segH > 0.5)
-                                sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{segH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"{FillOpacity(s)}\"/>");
+                                sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{segH:0.#}\" fill=\"{BarFill(s, c)}\" opacity=\"{FillOpacity(s)}\"/>");
                             if (showDataLabels && segH > DataLabelFontPx + 2)
                             {
                                 var vlabel = LabelText(rawVal, val);
@@ -602,7 +610,7 @@ internal partial class ChartSvgRenderer
                         // (with maxMin the baseline is at the TOP so bars grow downward).
                         var valY = ValToY(val);
                         var by = Math.Min(plotZeroY, valY);
-                        sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{bh:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"{FillOpacity(s)}\"/>");
+                        sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{bh:0.#}\" fill=\"{BarFill(s, c)}\" opacity=\"{FillOpacity(s)}\"/>");
                         if (showDataLabels)
                         {
                             var vlabel = LabelText(rawVal, val);
@@ -2210,6 +2218,11 @@ internal partial class ChartSvgRenderer
         public string[] Categories { get; set; } = [];
         public List<(string name, double[] values)> Series { get; set; } = [];
         public List<string> Colors { get; set; } = [];
+        // Per-data-point fill overrides for non-pie charts (bar/column). Index =
+        // series index; inner dict maps zero-based category idx -> '#'-prefixed
+        // hex. Populated from each series' <c:dPt> children. Empty/absent series
+        // dicts fall back to the per-series Colors entry (regression-safe).
+        public List<Dictionary<int, string>> PerPointColors { get; set; } = [];
         public string? Title { get; set; }
         public string TitleFontSize { get; set; } = "10pt";
         public bool ShowDataLabels { get; set; }
@@ -2437,6 +2450,11 @@ internal partial class ChartSvgRenderer
         var isPieType = info.ChartType.Contains("pie") || info.ChartType.Contains("doughnut");
         var serElements = chartTypeEl?.Elements().Where(e => e.LocalName == "ser").ToList() ?? [];
         info.Colors = ExtractColors(serElements, info.Series, isPieType, info.ChartType, themeColors);
+        // Per-data-point fill overrides (c:dPt) for non-pie charts. Pie/doughnut
+        // already fold dPt into per-point Colors above, so only collect these for
+        // the non-pie case where Colors is per-series.
+        if (!isPieType)
+            info.PerPointColors = ExtractPerPointColors(serElements, themeColors);
 
         // Title
         var titleEl = chart?.Elements().FirstOrDefault(e => e.LocalName == "title");
@@ -2946,6 +2964,32 @@ internal partial class ChartSvgRenderer
         return colors;
     }
 
+    /// <summary>Extract per-data-point fill overrides (<c:dPt>) for non-pie
+    /// charts (bar/column). Returns one dict per series mapping zero-based
+    /// category idx -> '#'-prefixed hex. Series with no dPt yield an empty dict,
+    /// so the renderer falls back to the per-series color (regression-safe).
+    /// Colors resolve through the same ExtractFillColor path used for series
+    /// fills (srgbClr/schemeClr/theme).</summary>
+    private static List<Dictionary<int, string>> ExtractPerPointColors(
+        List<OpenXmlElement> serElements, Dictionary<string, string>? themeColors = null)
+    {
+        var result = new List<Dictionary<int, string>>();
+        foreach (var ser in serElements)
+        {
+            var map = new Dictionary<int, string>();
+            foreach (var dPt in ser.Elements().Where(e => e.LocalName == "dPt"))
+            {
+                var idxEl = dPt.Elements().FirstOrDefault(e => e.LocalName == "idx");
+                var idxStr = idxEl?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+                if (!int.TryParse(idxStr, out var idx)) continue;
+                var rgb = ExtractFillColor(dPt.Elements().FirstOrDefault(e => e.LocalName == "spPr"), themeColors);
+                if (rgb != null) map[idx] = $"#{rgb}";
+            }
+            result.Add(map);
+        }
+        return result;
+    }
+
     /// <summary>Extract per-series fill opacity from the series spPr
     /// (pie/doughnut: per data-point dPt spPr) <a:solidFill><a:alpha val="…"/>.
     /// Returns null per entry when no explicit alpha is declared, so the
@@ -3223,7 +3267,7 @@ internal partial class ChartSvgRenderer
                     isHorizontal ? info.PlotFillColor : null, info.ReferenceLines,
                     info.IsWaterfall, info.ErrorBars,
                     info.IsPercent && info.ShowDataLabelPercent && !info.ShowDataLabelVal,
-                    info.DataLabelsNumFmt, info.Overlap, info.IsReversed);
+                    info.DataLabelsNumFmt, info.Overlap, info.IsReversed, info.PerPointColors);
         }
 
         // Axis titles inside SVG — for horizontal bar charts, value axis is on bottom and category axis is on left

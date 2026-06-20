@@ -2153,10 +2153,12 @@ internal partial class ChartSvgRenderer
         public string? PlotFillColor { get; set; }
         public string? ChartFillColor { get; set; }
         public bool HasLegend { get; set; }
-        /// <summary>#7f: OOXML c:legendPos InnerText — "b" (bottom, default),
-        /// "t" (top), "r" (right), "l" (left), "tr" (top-right). Rendering
+        /// <summary>#7f: OOXML c:legendPos InnerText — "r" (right, ECMA-376
+        /// CT_LegendPos default), "b" (bottom), "t" (top), "l" (left),
+        /// "tr" (top-right). Default is "r" to match the schema default that
+        /// real PowerPoint applies when &lt;c:legendPos&gt; is absent. Rendering
         /// adapts the wrapper layout to each position.</summary>
-        public string LegendPos { get; set; } = "b";
+        public string LegendPos { get; set; } = "r";
         public string LegendFontSize { get; set; } = "8pt";
         public string? LegendFontColor { get; set; }
         public int ValFontPx { get; set; } = 9;

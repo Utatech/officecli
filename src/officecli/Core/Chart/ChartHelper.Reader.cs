@@ -220,8 +220,11 @@ internal static partial class ChartHelper
         var legend = chart.GetFirstChild<C.Legend>();
         if (legend != null)
         {
+            // Absent <c:legendPos> → ECMA-376 CT_LegendPos default is "r"
+            // (right), which is what real PowerPoint renders. Only an explicit
+            // val overrides this.
             var posRaw = legend.GetFirstChild<C.LegendPosition>()?.Val?.HasValue == true
-                ? legend.GetFirstChild<C.LegendPosition>()!.Val!.InnerText : "b";
+                ? legend.GetFirstChild<C.LegendPosition>()!.Val!.InnerText : "r";
             node.Format["legend"] = posRaw switch
             {
                 "b" => "bottom",

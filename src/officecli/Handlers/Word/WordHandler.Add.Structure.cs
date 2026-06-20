@@ -187,11 +187,13 @@ public partial class WordHandler
         });
 
         // Allow per-section overrides
-        if (properties.TryGetValue("pagewidth", out var sw) || properties.TryGetValue("pageWidth", out sw) || properties.TryGetValue("width", out sw))
+        bool explicitWidth = properties.TryGetValue("pagewidth", out var sw) || properties.TryGetValue("pageWidth", out sw) || properties.TryGetValue("width", out sw);
+        if (explicitWidth)
         {
             (EnsureSectPrChild<PageSize>(sectPr)).Width = ParseTwips(sw);
         }
-        if (properties.TryGetValue("pageheight", out var sh) || properties.TryGetValue("pageHeight", out sh) || properties.TryGetValue("height", out sh))
+        bool explicitHeight = properties.TryGetValue("pageheight", out var sh) || properties.TryGetValue("pageHeight", out sh) || properties.TryGetValue("height", out sh);
+        if (explicitHeight)
         {
             (EnsureSectPrChild<PageSize>(sectPr)).Height = ParseTwips(sh);
         }
@@ -201,11 +203,24 @@ public partial class WordHandler
             ps.Orient = orient.ToLowerInvariant() == "landscape"
                 ? PageOrientationValues.Landscape
                 : PageOrientationValues.Portrait;
-            // Swap width/height if dimensions don't match orientation
-            if (ps.Orient == PageOrientationValues.Landscape && ps.Width < ps.Height)
-                (ps.Width!.Value, ps.Height!.Value) = (ps.Height.Value, ps.Width.Value);
-            if (ps.Orient == PageOrientationValues.Portrait && ps.Width > ps.Height)
-                (ps.Width!.Value, ps.Height!.Value) = (ps.Height.Value, ps.Width.Value);
+            // BUG-DUMP-SECT-ORIENT-SWAP: only auto-swap W/H to match the
+            // orientation flag when the caller did NOT supply both explicit
+            // dimensions. `add section --prop orientation=landscape` with
+            // inherited portrait dims wants the swap (a convenience); but on
+            // dump→batch replay the source's pgSz is authoritative — Word
+            // renders w:w/w:h literally and w:orient is only a printer/UI hint.
+            // A section legitimately carrying w<h with orient=landscape (e.g. an
+            // 11"-wide × 15.75"-tall page) must NOT be rotated, or it becomes
+            // 15.75"×11", shrinks the usable height, and reflows onto an extra
+            // page on round-trip.
+            bool dimsAuthoritative = explicitWidth && explicitHeight;
+            if (!dimsAuthoritative)
+            {
+                if (ps.Orient == PageOrientationValues.Landscape && ps.Width < ps.Height)
+                    (ps.Width!.Value, ps.Height!.Value) = (ps.Height.Value, ps.Width.Value);
+                if (ps.Orient == PageOrientationValues.Portrait && ps.Width > ps.Height)
+                    (ps.Width!.Value, ps.Height!.Value) = (ps.Height.Value, ps.Width.Value);
+            }
         }
         else
         {
@@ -1563,6 +1578,12 @@ public partial class WordHandler
             // loop would route `hidden` to ApplyRunFormatting (vanish alias)
             // and double-stamp it on rPr.
             "autoRedefine", "autoredefine", "hidden",
+            // customStyle / customstyle consumed in the explicit dispatch above
+            // (sets Style.CustomStyle, BUG-DUMP-R30-1). The dump emits it on
+            // every style entry (Normal included), so without listing it here
+            // the per-key sweep flags every styled docx's round-trip with a
+            // spurious customStyle "(not supported)" warning.
+            "customStyle", "customstyle",
             // BUG-DUMP-STYLE-LATENT: latent-style flags consumed in the explicit
             // dispatch above (uiPriority/semiHidden/unhideWhenUsed/qFormat/
             // locked). Without listing them here the per-key fallback loop would
@@ -1579,6 +1600,12 @@ public partial class WordHandler
             "align", "alignment", "spacebefore", "spaceBefore",
             "spaceafter", "spaceAfter", "linespacing", "lineSpacing",
             "spacebeforelines", "spaceBeforeLines", "spaceafterlines", "spaceAfterLines",
+            // auto-spacing toggles consumed in the explicit dispatch above; the
+            // dump emits them on styles whose pPr carries <w:spacing
+            // w:beforeAutospacing/@w:afterAutospacing>, so without listing them
+            // the per-key sweep flagged every such style's round-trip.
+            "spacebeforeauto", "spaceBeforeAuto", "beforeautospacing",
+            "spaceafterauto", "spaceAfterAuto", "afterautospacing",
             "lineRule", "linerule",
             "font", "size", "bold", "italic", "color",
             "direction", "dir", "bidi",
@@ -1780,6 +1807,29 @@ public partial class WordHandler
             // can surface a WARNING with targeted hints instead of a silent
             // "Added" lie. See StyleUnsupportedHints for the hint catalog.
             LastAddUnsupportedProps.Add(key);
+        }
+
+        // BUG-DUMP-STYLE-RPR-ORDER: the rPr is built in two passes — the explicit
+        // dispatch (rFonts/sz/color via SDK typed setters + ligatures via
+        // InsertRunPropInSchemaOrder) then the per-key sweep (size.cs→szCs,
+        // lang.*→lang, … via TypedAttributeFallback/GenericXmlQuery). The sweep
+        // paths call SchemaOrder.Place directly, which lacks the w14-extension
+        // hoist InsertRunPropInSchemaOrder has: when a <w14:ligatures> already
+        // sits in the rPr, the SDK comparator sorts that unknown element to the
+        // front, so Place strands a later standard child (szCs/lang) AFTER the
+        // w14 block — schema-invalid (CT_RPr requires every standard child to
+        // precede the w14 extension) and cascading into a fully scrambled rPr.
+        // Re-seat every standard (non-w14) child through InsertRunPropInSchemaOrder
+        // once at the end: its Place + w14-hoist converge on the correct CT_RPr
+        // order regardless of the pre-existing (scrambled) sibling order.
+        if (newStyle.StyleRunProperties is { } finalRPr)
+        {
+            foreach (var child in finalRPr.ChildElements
+                         .Where(c => c.NamespaceUri != W14Ns).ToList())
+            {
+                child.Remove();
+                InsertRunPropInSchemaOrder(finalRPr, child);
+            }
         }
 
         stylesPart.Styles.AppendChild(newStyle);

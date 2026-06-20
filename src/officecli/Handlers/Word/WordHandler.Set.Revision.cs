@@ -195,7 +195,7 @@ public partial class WordHandler
         {
             var lk = k.ToLowerInvariant();
             if (lk is "revision.type" or "revision.author" or "revision.date" or "revision.id"
-                  or "revision.beforexml")
+                  or "revision.beforexml" or "revision.skiprowcascade")
                 continue;
             stripped[k] = v;
         }
@@ -414,6 +414,13 @@ public partial class WordHandler
                 throw new InvalidOperationException(
                     "element already has a pending tblPrChange; accept/reject existing first");
 
+            // BUG-DUMP-R71-TBLPREX-CASCADE: dump→batch sets this so the per-row
+            // tblPrEx cascade below is skipped — the source's real per-row
+            // exceptions already replay verbatim, and the cascade would
+            // otherwise inject spurious tblPrEx into every row.
+            bool skipRowCascade = properties.TryGetValue("revision.skipRowCascade", out var srcVal)
+                && IsTruthy(srcVal);
+
             // For sect/tbl/tc/tr the SDK does NOT have an *Extended quirk —
             // only Previous*Properties classes exist. Use them directly.
             var previous = new PreviousTableProperties();
@@ -493,6 +500,18 @@ public partial class WordHandler
                 // carries after the wrap, same lie shape Word's own UI
                 // produces. Without the cascade Mac Word silently drops
                 // the table revision from the pane (verified 2026-05-25).
+                //
+                // BUG-DUMP-R71-TBLPREX-CASCADE: the cascade is an interactive
+                // convenience, not a round-trip operation. On dump→batch the
+                // source's authoritative per-row tblPrEx already round-trip
+                // verbatim via per-row `set tr --prop tblPrEx`, so re-running
+                // the cascade here re-stamps tblPrEx onto EVERY row (including
+                // the many that never had one), inflating a table with a
+                // table-level tblPrChange but no per-row exceptions from 0 to
+                // (rows × 2) tblPrEx and tripping schema validation. The batch
+                // emitter sets revision.skipRowCascade so the replay reproduces
+                // the source exactly instead of synthesizing the Mac-only hack.
+                if (!skipRowCascade)
                 foreach (var (rowEl, prevEx) in rowSnapshots)
                 {
                     var liveEx = rowEl.GetFirstChild<TablePropertyExceptions>();

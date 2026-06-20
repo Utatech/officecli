@@ -830,6 +830,8 @@ public partial class WordHandler
         if (directNid != null && directNid != 0)
         {
             var ilvl = directNumPr!.NumberingLevelReference?.Val?.Value ?? 0;
+            // CONSISTENCY(ilvl-clamp): same guard as GetListPrefix.
+            if (ilvl < 0) ilvl = 0; else if (ilvl > 8) ilvl = 8;
             var numFmt = GetNumberingFormat(directNid.Value, ilvl);
             return numFmt.ToLowerInvariant() == "bullet" ? "bullet" : "ordered";
         }
@@ -851,7 +853,9 @@ public partial class WordHandler
         if (resolved == null) return null;
         var (numId, ilvlR) = resolved.Value;
         if (numId == 0) return null;
-        var numFmtR = GetNumberingFormat(numId, ilvlR);
+        // CONSISTENCY(ilvl-clamp): same guard as GetListPrefix.
+        var ilvlRc = ilvlR < 0 ? 0 : ilvlR > 8 ? 8 : ilvlR;
+        var numFmtR = GetNumberingFormat(numId, ilvlRc);
         return numFmtR.ToLowerInvariant() == "bullet" ? "bullet" : "ordered";
     }
 
@@ -890,17 +894,54 @@ public partial class WordHandler
     /// using the four-way precedence Word follows: in-run running count →
     /// explicit startOverride → abstractNum continuation → level start value.
     /// </summary>
-    private int SeedOrderedStart(OrderedListNumberingState st, int numId, int? absId, int forIlvl)
+    // INT_MIN guard: seed - 1 would wrap (unchecked) to int.MaxValue, which then
+    // permanently triggers the saturation branch in AdvanceOrderedCounter and
+    // freezes every item at int.MaxValue. Seed at INT_MIN instead so the counter
+    // still advances upward (graceful for an absurd start).
+    private static int SeedBelow(int v) => v == int.MinValue ? int.MinValue : v - 1;
+
+    private int SeedOrderedStart(OrderedListNumberingState st, int numId, int? absId, int forIlvl, bool autoInit = false)
     {
         if (st.OlCountPerLevel.TryGetValue(forIlvl, out var prev) && prev > 0)
             return prev;
-        var ovr = GetNumStartOverride(numId, forIlvl);
-        if (ovr.HasValue) return ovr.Value - 1;
+        // <w:startOverride> is a restart marker that applies only when the level
+        // is explicitly visited. When a deeper level auto-initializes a skipped
+        // shallower level (autoInit), Word ignores startOverride and uses the
+        // level's intrinsic <w:start> — verified vs real Word.
+        if (!autoInit)
+        {
+            var ovr = GetNumStartOverride(numId, forIlvl);
+            if (ovr.HasValue) return SeedBelow(ovr.Value);
+        }
         if (absId.HasValue
             && st.AbsNumLevelCounters.TryGetValue(absId.Value, out var byIlvl)
             && byIlvl.TryGetValue(forIlvl, out var running) && running > 0)
             return running;
-        return (GetStartValue(numId, forIlvl) ?? 1) - 1;
+        var rawStart = autoInit
+            ? GetLevelDefinedStart(numId, forIlvl)
+            : (GetStartValue(numId, forIlvl) ?? 1);
+        return SeedBelow(rawStart);
+    }
+
+    // The level's intrinsic start value, EXCLUDING <w:startOverride> (which is a
+    // restart marker, not part of the level definition). An embedded <w:lvl>
+    // override replaces the level definition, so its own <w:start> governs;
+    // otherwise the abstractNum level's <w:start>. Default 1.
+    private int GetLevelDefinedStart(int numId, int ilvl)
+    {
+        var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+        var inst = numbering?.Elements<NumberingInstance>()
+            .FirstOrDefault(n => n.NumberID?.Value == numId);
+        var lvlOverride = inst?.Elements<LevelOverride>()
+            .FirstOrDefault(o => o.LevelIndex?.Value == ilvl);
+        if (lvlOverride?.GetFirstChild<Level>() is Level emb)
+            return emb.StartNumberingValue?.Val?.Value ?? 1;
+        var absId = inst?.AbstractNumId?.Val?.Value;
+        var abs = numbering?.Elements<AbstractNum>()
+            .FirstOrDefault(a => a.AbstractNumberId?.Value == absId);
+        var lvl = abs?.Elements<Level>()
+            .FirstOrDefault(l => l.LevelIndex?.Value == ilvl);
+        return lvl?.StartNumberingValue?.Val?.Value ?? 1;
     }
 
     /// <summary>
@@ -912,14 +953,44 @@ public partial class WordHandler
     /// </summary>
     private void AdvanceOrderedCounter(OrderedListNumberingState st, int numId, int? absId, int ilvl)
     {
+        // ECMA-376 §17.9: jumping to a deeper level auto-initializes every
+        // shallower level that was never visited to its start value. Word
+        // renders a skipped intermediate level as its start (0->2 yields
+        // "1.1.1.", not "1.0.1.") AND treats the implicit init as a visit, so a
+        // later explicit visit to that level increments from start ("1.2.").
+        // Seed each un-visited shallower level before advancing the current one.
+        for (int j = 0; j < ilvl; j++)
+        {
+            if (st.OlCountPerLevel.ContainsKey(j)) continue;
+            var sj = SeedOrderedStart(st, numId, absId, j, autoInit: true) + 1;
+            st.OlCountPerLevel[j] = sj;
+            st.MultiLevelCounters[j] = sj;
+            if (absId.HasValue)
+            {
+                if (!st.AbsNumLevelCounters.TryGetValue(absId.Value, out var bi))
+                {
+                    bi = new Dictionary<int, int>();
+                    st.AbsNumLevelCounters[absId.Value] = bi;
+                }
+                bi[j] = sj;
+            }
+        }
         var seed = SeedOrderedStart(st, numId, absId, ilvl);
-        st.OlCountPerLevel[ilvl] = st.OlCountPerLevel.GetValueOrDefault(ilvl, seed) + 1;
+        var prev = st.OlCountPerLevel.GetValueOrDefault(ilvl, seed);
+        // Saturate at int.MaxValue to avoid overflow when w:start is INT_MAX.
+        st.OlCountPerLevel[ilvl] = prev == int.MaxValue ? int.MaxValue : prev + 1;
         st.MultiLevelCounters[ilvl] = st.OlCountPerLevel[ilvl];
         for (int lk = ilvl + 1; lk <= 8; lk++)
         {
             if (!ShouldRestartDeeperLevel(numId, ilvl, lk)) continue;
-            if (st.OlCountPerLevel.ContainsKey(lk)) st.OlCountPerLevel[lk] = 0;
-            if (st.MultiLevelCounters.ContainsKey(lk)) st.MultiLevelCounters[lk] = 0;
+            // Restart by REMOVING the counter, not zeroing it: the next advance
+            // then re-seeds via SeedOrderedStart, which honors the level's
+            // <w:start> / <w:startOverride>. Zeroing made GetValueOrDefault
+            // return the stored 0, so the level always restarted at 1 — wrong
+            // for any level whose start != 1 (e.g. start=5 restarted to 1, not
+            // 5). Verified vs real Word.
+            st.OlCountPerLevel.Remove(lk);
+            st.MultiLevelCounters.Remove(lk);
         }
         if (absId.HasValue)
         {
@@ -932,7 +1003,7 @@ public partial class WordHandler
             for (int lk = ilvl + 1; lk <= 8; lk++)
             {
                 if (!ShouldRestartDeeperLevel(numId, ilvl, lk)) continue;
-                if (byIlvl.ContainsKey(lk)) byIlvl[lk] = 0;
+                byIlvl.Remove(lk); // mirror the OlCountPerLevel restart: re-seed, don't zero
             }
         }
     }
@@ -1046,11 +1117,11 @@ public partial class WordHandler
         var indent = new string(' ', ilvl * 2);
         var numFmt = GetNumberingFormat(numId.Value, ilvl);
 
-        // Bullet lists render a plain "• " in text mode — the lvlText for a
-        // bullet level is a private-use Wingdings code point that is garbage
-        // as plain text.
+        // Bullet lists render their lvlText glyph in text mode — a custom glyph
+        // (★ ▶ ● …) passes through verbatim to match Word and the HTML preview;
+        // standard/Wingdings bullets map to •/◦/▪. See BulletGlyphForText.
         if (numFmt.Equals("bullet", StringComparison.OrdinalIgnoreCase))
-            return $"{indent}• ";
+            return $"{indent}{BulletGlyphForText(GetLevelText(numId.Value, ilvl))} ";
 
         // Stateless fallback: no walk context → render from the level start.
         var st = state ?? new OrderedListNumberingState();
@@ -1101,11 +1172,10 @@ public partial class WordHandler
         var level = abstractNum?.Elements<Level>()
             .FirstOrDefault(l => l.LevelIndex?.Value == ilvl);
 
-        // Check for lvlPicBulletId
-        var picBulletIdAttr = level?.GetAttributes().FirstOrDefault(a => a.LocalName == "lvlPicBulletId");
-        if (picBulletIdAttr is not { } attr || attr.Value == null) return null;
-
-        // Find the matching numPicBullet element
+        // <w:lvlPicBulletId w:val="N"/> is a CHILD element of <w:lvl>, not an
+        // attribute — the old GetAttributes() guard here never matched and made
+        // this method always return null (picture bullets fell back to a plain
+        // circle in the HTML preview). Read the child element directly.
         var picBulletEl = level?.Descendants().FirstOrDefault(e => e.LocalName == "lvlPicBulletId");
         if (picBulletEl == null) return null;
         var picBulletIdStr = picBulletEl.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
@@ -1195,9 +1265,13 @@ public partial class WordHandler
             .FirstOrDefault(n => n.NumberID?.Value == numId);
         if (numInstance == null) return null;
 
-        // Check level override first
+        // Check level override first. ECMA-376 §17.9.7: when the lvlOverride
+        // embeds a full <w:lvl>, that replacement's own <w:start> governs and
+        // the sibling startOverride is ignored — mirror GetLevel's precedence.
         var lvlOverride = numInstance.Elements<LevelOverride>()
             .FirstOrDefault(o => o.LevelIndex?.Value == ilvl);
+        if (lvlOverride?.GetFirstChild<Level>() is Level embeddedLevel)
+            return embeddedLevel.StartNumberingValue?.Val?.Value;
         if (lvlOverride?.StartOverrideNumberingValue?.Val?.Value is int overrideStart)
             return overrideStart;
 
@@ -1248,7 +1322,19 @@ public partial class WordHandler
         container ??= _doc.MainDocumentPart?.Document?.Body;
         if (container == null) return null;
 
-        var lastPara = container.Elements<Paragraph>().LastOrDefault(p => !ReferenceEquals(p, targetPara));
+        // Continue from the paragraph IMMEDIATELY before the target (the
+        // documented "immediately preceding list" rule). When the target is
+        // already in the tree (Set path), that is its previous Paragraph
+        // sibling; when it is still detached (Add path, inserted only after
+        // ApplyListStyle runs), the container's last paragraph IS the
+        // predecessor. The old code always took the container's LAST paragraph,
+        // so `set listStyle=ordered` on a mid-document paragraph compared
+        // against the document's final paragraph instead of the real
+        // predecessor and minted a fresh numId per call (1,1,2 for three
+        // adjacent items set one-by-one, instead of 1,2,3).
+        var lastPara = targetPara?.Parent != null
+            ? targetPara.ElementsBefore().OfType<Paragraph>().LastOrDefault()
+            : container.Elements<Paragraph>().LastOrDefault(p => !ReferenceEquals(p, targetPara));
         if (lastPara == null) return null;
 
         var numProps = lastPara.ParagraphProperties?.NumberingProperties;

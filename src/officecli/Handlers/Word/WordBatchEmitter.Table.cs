@@ -376,6 +376,14 @@ public static partial class WordBatchEmitter
             var tblPrBeforeXml = TryStringFormat(tableNode.Format, "tblPrChange.beforeXml");
             if (tblPrBeforeXml != null)
                 tableSetProps["revision.beforeXml"] = tblPrBeforeXml;
+            // BUG-DUMP-R71-TBLPREX-CASCADE: suppress the apply-side per-row
+            // tblPrEx cascade. That cascade is an interactive Mac-Word
+            // visibility hack; on round-trip the source's real per-row tblPrEx
+            // already replay verbatim via per-row `set tr --prop tblPrEx`, so
+            // letting the cascade also run injects spurious tblPrEx into every
+            // row (tables with a table-level tblPrChange but no per-row
+            // exceptions went 0 → rows×2 tblPrEx and failed validation).
+            tableSetProps["revision.skipRowCascade"] = "true";
         }
         else
         {
@@ -433,7 +441,21 @@ public static partial class WordBatchEmitter
         // schema order on save, so append is safe. Only emitted when the grid
         // doesn't already carry a tblGridChange from a width-Set side effect
         // (the snapshot here is the authoritative source state).
+        // BUG-DUMP-R71-TBLGRIDCHANGE-DUP: when the table also carries a
+        // tracked table-properties change (hasTblPrChange), the follow-up
+        // `set` step replays the source colWidths under track-changes, and the
+        // colWidths-Set-under-revision side effect ALREADY re-creates the
+        // <w:tblGridChange> in the grid (see RestorePropsFromChange/gridChange
+        // in Set.Revision.cs). Appending the verbatim snapshot here too then
+        // duplicates it — two <w:tblGridChange> in one <w:tblGrid>, which
+        // CT_TblGrid (gridCol* + tblGridChange?) rejects. Only emit the raw-set
+        // append when the set side effect won't produce one (no tblPrChange, or
+        // no colWidths to drive the grid change).
+        bool gridChangeFromSetSideEffect = hasTblPrChange
+            && tableSetProps != null
+            && (tableSetProps.ContainsKey("colWidths") || tableSetProps.ContainsKey("colwidths"));
         if (containerPath == "/body"
+            && !gridChangeFromSetSideEffect
             && tableNode.Format.TryGetValue("tblGridChange.xml", out var gridChangeRaw)
             && gridChangeRaw?.ToString() is { Length: > 0 } gridChangeXml)
         {

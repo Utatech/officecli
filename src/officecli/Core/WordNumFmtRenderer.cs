@@ -15,8 +15,14 @@ public static class WordNumFmtRenderer
 {
     public static string Render(int n, string? numFmt)
     {
-        if (n < 1) n = 1;
-        switch ((numFmt ?? "decimal").ToLowerInvariant())
+        var fmt = (numFmt ?? "decimal").ToLowerInvariant();
+        // Plain decimal can represent 0 and negatives directly (a <w:start>
+        // of 0 must render "0", not a clamped "1" that duplicates the next
+        // item's marker). Every other format — letters, roman, the CJK/Korean
+        // counting tables, enclosed glyphs — has no zero or negative form, so
+        // keep clamping those to 1 (matches Word).
+        if (n < 1 && fmt != "decimal") n = 1;
+        switch (fmt)
         {
             case "decimal": return n.ToString(CultureInfo.InvariantCulture);
             case "decimalzero": return n < 10 ? $"0{n}" : n.ToString(CultureInfo.InvariantCulture);
@@ -613,9 +619,13 @@ public static class WordNumFmtRenderer
 
     private static string ToRussianAlpha(int n, bool uppercase)
     {
-        if (n < 1 || n > RussianAlphaLower.Length)
-            return n.ToString(CultureInfo.InvariantCulture);
-        var s = RussianAlphaLower[n - 1];
-        return uppercase ? s.ToUpperInvariant() : s;
+        // Same recycling rule as ToAlpha: а,б,…,я,аа,бб,… (repeating letter
+        // past the 28-letter set), with the identical DoS cap of 64 repeats
+        // for adversarial <w:start>.
+        if (n < 1) n = 1;
+        var s = RussianAlphaLower[(n - 1) % RussianAlphaLower.Length];
+        var repeat = Math.Min(((n - 1) / RussianAlphaLower.Length) + 1, 64);
+        var glyph = new string(s[0], repeat);
+        return uppercase ? glyph.ToUpperInvariant() : glyph;
     }
 }

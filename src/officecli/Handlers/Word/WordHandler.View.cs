@@ -373,7 +373,16 @@ public partial class WordHandler
                 continue;
             }
 
-            if (startLine.HasValue && lineNum < startLine.Value) continue;
+            if (startLine.HasValue && lineNum < startLine.Value)
+            {
+                // Advance list numbering for paragraphs BEFORE the window so the
+                // first emitted item shows its real marker (e.g. "18.") instead
+                // of restarting at 1. listCounter is shared engine state;
+                // skipping these paragraphs without advancing it desynced a
+                // windowed view from the full view.
+                if (element is Paragraph preWinPara) GetListPrefix(preWinPara, listCounter);
+                continue;
+            }
             if (endLine.HasValue && lineNum > endLine.Value) break;
 
             if (maxLines.HasValue && emitted >= maxLines.Value)
@@ -532,7 +541,16 @@ public partial class WordHandler
                 path = $"/body/?[{lineNum}]";
             }
 
-            if (startLine.HasValue && lineNum < startLine.Value) continue;
+            if (startLine.HasValue && lineNum < startLine.Value)
+            {
+                // Advance list numbering for paragraphs BEFORE the window so the
+                // first emitted item shows its real marker (e.g. "18.") instead
+                // of restarting at 1. listCounter is shared engine state;
+                // skipping these paragraphs without advancing it desynced a
+                // windowed view from the full view.
+                if (element is Paragraph preWinPara) GetListPrefix(preWinPara, listCounter);
+                continue;
+            }
             if (endLine.HasValue && lineNum > endLine.Value) break;
 
             if (maxLines.HasValue && emitted >= maxLines.Value)
@@ -1060,7 +1078,16 @@ public partial class WordHandler
             }
             else continue;
 
-            if (startLine.HasValue && lineNum < startLine.Value) continue;
+            if (startLine.HasValue && lineNum < startLine.Value)
+            {
+                // Advance list numbering for paragraphs BEFORE the window so the
+                // first emitted item shows its real marker (e.g. "18.") instead
+                // of restarting at 1. listCounter is shared engine state;
+                // skipping these paragraphs without advancing it desynced a
+                // windowed view from the full view.
+                if (element is Paragraph preWinPara) GetListPrefix(preWinPara, listCounter);
+                continue;
+            }
             if (endLine.HasValue && lineNum > endLine.Value) break;
             if (maxLines.HasValue && emitted >= maxLines.Value) break;
 

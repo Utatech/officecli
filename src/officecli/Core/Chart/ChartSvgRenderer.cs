@@ -2898,6 +2898,31 @@ internal partial class ChartSvgRenderer
         if (!isPieType)
             info.PerPointColors = ExtractPerPointColors(serElements, themeColors);
 
+        // <c:varyColors val="1"/> on a single-series NON-pie chart colors each data
+        // point from the theme accent palette (PowerPoint "vary colors by point") —
+        // but ONLY when the series has no explicit fill (an explicit series fill wins,
+        // keeping the bars monochrome). Seed PerPointColors, which BarFill consults;
+        // explicit dPt entries already present are preserved (not overwritten).
+        if (!isPieType && info.Series.Count == 1 && serElements.Count == 1)
+        {
+            var vcEl = chartTypeEl?.Elements().FirstOrDefault(e => e.LocalName == "varyColors");
+            var vcVal = vcEl?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+            var varyOn = vcEl != null && vcVal is null or "1" or "true";
+            var serSpPr = serElements[0].Elements().FirstOrDefault(e => e.LocalName == "spPr");
+            var hasExplicitFill = ExtractFillColor(serSpPr, themeColors) != null;
+            if (varyOn && !hasExplicitFill)
+            {
+                var palette = new[] { "accent1", "accent2", "accent3", "accent4", "accent5", "accent6" }
+                    .Where(k => themeColors.ContainsKey(k)).Select(k => $"#{themeColors[k]}").ToArray();
+                if (palette.Length == 0) palette = FallbackColors;
+                while (info.PerPointColors.Count < 1) info.PerPointColors.Add([]);
+                var catN = info.Categories.Count();
+                for (int c = 0; c < catN; c++)
+                    if (!info.PerPointColors[0].ContainsKey(c))
+                        info.PerPointColors[0][c] = palette[c % palette.Length];
+            }
+        }
+
         // Title
         var titleEl = chart?.Elements().FirstOrDefault(e => e.LocalName == "title");
         if (titleEl != null)

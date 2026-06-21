@@ -366,12 +366,12 @@ public partial class PowerPointHandler
                     if (tlBrCss != null && tlBrCss != "none")
                     {
                         var (stroke, widthPt) = ParseBorderCssForSvg(tlBrCss);
-                        diagLines.Append($"<line x1=\"0\" y1=\"0\" x2=\"100%\" y2=\"100%\" stroke=\"{stroke}\" stroke-width=\"{widthPt:0.##}\"/>");
+                        diagLines.Append($"<line x1=\"0\" y1=\"0\" x2=\"100%\" y2=\"100%\" stroke=\"{stroke}\" stroke-width=\"{widthPt:0.##}pt\"/>");
                     }
                     if (blTrCss != null && blTrCss != "none")
                     {
                         var (stroke, widthPt) = ParseBorderCssForSvg(blTrCss);
-                        diagLines.Append($"<line x1=\"0\" y1=\"100%\" x2=\"100%\" y2=\"0\" stroke=\"{stroke}\" stroke-width=\"{widthPt:0.##}\"/>");
+                        diagLines.Append($"<line x1=\"0\" y1=\"100%\" x2=\"100%\" y2=\"0\" stroke=\"{stroke}\" stroke-width=\"{widthPt:0.##}pt\"/>");
                     }
                     diagOverlay = $"<svg class=\"cell-diag\" width=\"100%\" height=\"100%\" style=\"position:absolute;inset:0;pointer-events:none;overflow:visible\" preserveAspectRatio=\"none\">{diagLines}</svg>";
                 }

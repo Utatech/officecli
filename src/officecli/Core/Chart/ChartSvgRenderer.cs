@@ -171,7 +171,8 @@ internal partial class ChartSvgRenderer
         bool labelAsPercent = false, string? dataLabelNumFmt = null, int? ooxmlOverlap = null,
         bool isReversed = false, List<Dictionary<int, string>>? perPointColors = null,
         int? catLabelRotationDeg = null, int? valLabelRotationDeg = null,
-        List<TrendlineInfo?>? trendlines = null)
+        List<TrendlineInfo?>? trendlines = null,
+        bool showSerName = false, bool showCatName = false, bool showVal = true)
     {
         // Per-data-point fill override (c:dPt): for series s, category idx c,
         // return the explicit dPt color when present, else the per-series color.
@@ -211,10 +212,22 @@ internal partial class ChartSvgRenderer
         // Prefer an explicit data-label format (<c:dLbls><c:numFmt>); it applies
         // even to integer values (so #,##0 yields "1,000" not raw "1000"). Fall
         // back to the bare-integer shortcut then the axis numFmt otherwise.
-        string LabelText(double rawVal, double pctVal)
+        string ValuePart(double rawVal, double pctVal)
             => labelAsPercent ? $"{pctVal:0}%"
                : !string.IsNullOrEmpty(dataLabelNumFmt) ? FormatAxisValue(rawVal, dataLabelNumFmt)
                : (rawVal % 1 == 0 ? $"{(int)rawVal}" : FormatAxisValue(rawVal, valNumFmt));
+        // Compose the label from the enabled parts in PowerPoint's order:
+        // series name, category name, value/percent. When no show* flag is
+        // explicitly set the legacy default (value only) is preserved by the
+        // showVal=true default the call sites pass.
+        string LabelText(int s, int catIdx, double rawVal, double pctVal)
+        {
+            var parts = new List<string>();
+            if (showSerName && s < series.Count) parts.Add(series[s].name);
+            if (showCatName && catIdx >= 0 && catIdx < categories.Length) parts.Add(categories[catIdx]);
+            if (showVal) parts.Add(ValuePart(rawVal, pctVal));
+            return string.Join(", ", parts);
+        }
 
         double maxVal;
         // Stacked mixed-sign support: positive segments stack from 0 upward and
@@ -416,7 +429,7 @@ internal partial class ChartSvgRenderer
                         // Label at segment center — skip if segment narrower than ~2 chars to avoid overflow
                         if (showDataLabels && segW > DataLabelFontPx * 1.6)
                         {
-                            var vlabel = LabelText(rawVal, val);
+                            var vlabel = LabelText(s, dataIdx, rawVal, val);
                             sb.AppendLine($"        <text class=\"chart-data-label\" x=\"{bx + segW / 2:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"{ValueColor}\" font-size=\"{DataLabelFontPx}\" text-anchor=\"middle\" dominant-baseline=\"middle\">{vlabel}</text>");
                         }
                     }
@@ -437,7 +450,7 @@ internal partial class ChartSvgRenderer
                         // which previously left non-stacked horizontal bars unlabeled.
                         if (showDataLabels && barH > DataLabelFontPx)
                         {
-                            var vlabel = LabelText(rawVal, val);
+                            var vlabel = LabelText(s, dataIdx, rawVal, val);
                             // Honor <c:dLblPos>: outEnd places the label just past the
                             // bar tip; inEnd inside the bar near the tip; ctr at the
                             // bar's midpoint; inBase near the zero baseline. Without
@@ -648,7 +661,7 @@ internal partial class ChartSvgRenderer
                                     sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{BarFill(s, c)}\" opacity=\"{FillOpacity(s)}\"/>");
                                 if (showDataLabels && barH > DataLabelFontPx + 2)
                                 {
-                                    var vlabel = FormatAxisValue(rawVal, valNumFmt);
+                                    var vlabel = LabelText(s, c, rawVal, rawVal);
                                     sb.AppendLine($"        <text class=\"chart-data-label\" x=\"{bx + barW / 2:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"{ValueColor}\" font-size=\"{DataLabelFontPx}\" text-anchor=\"middle\" dominant-baseline=\"middle\">{vlabel}</text>");
                                 }
                             }
@@ -690,7 +703,7 @@ internal partial class ChartSvgRenderer
                                 sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{segH:0.#}\" fill=\"{BarFill(s, c)}\" opacity=\"{FillOpacity(s)}\"/>");
                             if (showDataLabels && segH > DataLabelFontPx + 2)
                             {
-                                var vlabel = LabelText(rawVal, val);
+                                var vlabel = LabelText(s, c, rawVal, val);
                                 sb.AppendLine($"        <text class=\"chart-data-label\" x=\"{bx + barW / 2:0.#}\" y=\"{by + segH / 2:0.#}\" fill=\"{ValueColor}\" font-size=\"{DataLabelFontPx}\" text-anchor=\"middle\" dominant-baseline=\"middle\">{vlabel}</text>");
                             }
                         }
@@ -710,7 +723,7 @@ internal partial class ChartSvgRenderer
                         sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{bh:0.#}\" {BarFillAttrs(s, c, val)} opacity=\"{FillOpacity(s)}\"/>");
                         if (showDataLabels)
                         {
-                            var vlabel = LabelText(rawVal, val);
+                            var vlabel = LabelText(s, c, rawVal, val);
                             // Honor <c:dLblPos> for vertical columns. The value-end tip
                             // is the top edge (by) when the bar grows up, else the bottom
                             // edge (by+bh); the base edge is the opposite. outEnd places
@@ -1082,7 +1095,8 @@ internal partial class ChartSvgRenderer
         List<TrendlineInfo?>? trendlines = null, List<ErrorBarInfo?>? errorBars = null,
         bool scatterMarkersOnly = false, bool stacked = false, bool percent = false,
         string? dataLabelNumFmt = null,
-        List<string?>? markerFillColors = null, List<string?>? markerLineColors = null)
+        List<string?>? markerFillColors = null, List<string?>? markerLineColors = null,
+        bool showSerName = false, bool showCatName = false, bool showVal = true)
     {
         bool isLog = logBase.HasValue && logBase.Value > 1;
 
@@ -1316,9 +1330,17 @@ internal partial class ChartSvgRenderer
                     // BUG5(R25): honor <c:dLbls><c:numFmt> on the data labels
                     // (e.g. "$#,##0"); fall back to the value-axis numFmt (mirrors
                     // the bar LabelText path) then the bare-integer shortcut.
-                    var vlabel = !string.IsNullOrEmpty(dataLabelNumFmt) ? FormatAxisValue(val, dataLabelNumFmt)
+                    var valuePart = !string.IsNullOrEmpty(dataLabelNumFmt) ? FormatAxisValue(val, dataLabelNumFmt)
                         : !string.IsNullOrEmpty(valNumFmt) ? FormatAxisValue(val, valNumFmt)
                         : val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
+                    // Compose enabled label parts (series name, category name,
+                    // value) in PowerPoint's order. Default (showVal only) keeps
+                    // the legacy value-only label.
+                    var lparts = new List<string>();
+                    if (showSerName && s < series.Count) lparts.Add(series[s].name);
+                    if (showCatName && p >= 0 && p < categories.Length) lparts.Add(categories[p]);
+                    if (showVal) lparts.Add(valuePart);
+                    var vlabel = string.Join(", ", lparts);
                     sb.AppendLine($"        <text class=\"chart-data-label\" x=\"{pts[p].x:0.#}\" y=\"{pts[p].y - 6:0.#}\" fill=\"{ValueColor}\" font-size=\"{DataLabelFontPx}\" text-anchor=\"middle\">{vlabel}</text>");
                 }
             }
@@ -1401,7 +1423,8 @@ internal partial class ChartSvgRenderer
 
     public void RenderPieChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int svgW, int svgH, double holeRatio = 0.0, bool showDataLabels = false,
-        bool showVal = false, bool showPercent = false, bool showCatName = false, List<double>? explosions = null)
+        bool showVal = false, bool showPercent = false, bool showCatName = false, List<double>? explosions = null,
+        bool showSerName = false)
     {
         var values = series.FirstOrDefault().values ?? [];
         if (values.Length == 0) return;
@@ -1512,14 +1535,17 @@ internal partial class ChartSvgRenderer
                     label = pct >= 5 ? $"{pct:0}%" : "";
                 else if (showVal && showPercent)
                     label = pct >= 5 ? $"{values[i]:0.##} ({pct:0}%)" : "";
-                else if (showCatName && !showVal && !showPercent)
-                    label = ""; // category-name only — value text intentionally empty (prepended below)
+                else if ((showCatName || showSerName) && !showVal && !showPercent)
+                    label = ""; // name-only — value text intentionally empty (name parts prepended below)
                 else
                     label = pct >= 5 ? $"{pct:0}%" : ""; // default to percent for pie
-                // showCatName: prepend the category name (PowerPoint style:
-                // "Category, value, pct"). Honored independently of val/percent.
+                // showCatName / showSerName: prepend the category and/or series
+                // name (PowerPoint style: "Series, Category, value, pct").
+                // Honored independently of val/percent.
                 if (showCatName && pct >= 5 && i < categories.Length && !string.IsNullOrEmpty(categories[i]))
                     label = string.IsNullOrEmpty(label) ? categories[i] : $"{categories[i]}, {label}";
+                if (showSerName && pct >= 5 && series.Count > 0 && !string.IsNullOrEmpty(series[0].name))
+                    label = string.IsNullOrEmpty(label) ? series[0].name : $"{series[0].name}, {label}";
                 // Outside labels sit on the plot background, not on a colored
                 // slice — use a dark fill (white is invisible there).
                 var labelFill = labelOutside ? "#444" : "#fff";
@@ -2579,6 +2605,7 @@ internal partial class ChartSvgRenderer
         public bool ShowDataLabelVal { get; set; }
         public bool ShowDataLabelPercent { get; set; }
         public bool ShowDataLabelCatName { get; set; }
+        public bool ShowDataLabelSerName { get; set; }
         // <c:dLblPos val="inEnd|outEnd|ctr|inBase"/> — drives where the label sits
         // relative to the bar end. Default "outEnd" matches Office's grouped-bar
         // default; "inEnd" places it inside the bar near its end.
@@ -2871,7 +2898,8 @@ internal partial class ChartSvgRenderer
             info.ShowDataLabelVal = IsOn("showVal");
             info.ShowDataLabelPercent = IsOn("showPercent");
             info.ShowDataLabelCatName = IsOn("showCatName");
-            info.ShowDataLabels = info.ShowDataLabelVal || info.ShowDataLabelPercent || info.ShowDataLabelCatName;
+            info.ShowDataLabelSerName = IsOn("showSerName");
+            info.ShowDataLabels = info.ShowDataLabelVal || info.ShowDataLabelPercent || info.ShowDataLabelCatName || info.ShowDataLabelSerName;
             // <c:dLblPos> — inEnd (inside, near end) vs outEnd (beyond end) etc.
             // Office places insideEnd labels within the bar and outsideEnd just
             // past the bar tip; ignoring it made both positions identical.
@@ -3771,7 +3799,8 @@ internal partial class ChartSvgRenderer
                     info.RotateX > 0 ? info.RotateX : 30);
             else
                 RenderPieChartSvg(sb, info.Series, info.Categories, info.Colors, svgW, svgH, info.HoleRatio, info.ShowDataLabels,
-                    info.ShowDataLabelVal, info.ShowDataLabelPercent, info.ShowDataLabelCatName, info.Explosions);
+                    info.ShowDataLabelVal, info.ShowDataLabelPercent, info.ShowDataLabelCatName, info.Explosions,
+                    info.ShowDataLabelSerName);
         }
         else if (chartType.Contains("area"))
         {
@@ -3825,7 +3854,9 @@ internal partial class ChartSvgRenderer
                     info.HighLowLineColor, info.HighLowLineWidth,
                     info.Trendlines, info.ErrorBars, info.ScatterMarkersOnly,
                     info.IsStacked, info.IsPercent, info.DataLabelsNumFmt,
-                    info.MarkerFillColors, info.MarkerLineColors);
+                    info.MarkerFillColors, info.MarkerLineColors,
+                    info.ShowDataLabelSerName, info.ShowDataLabelCatName,
+                    info.ShowDataLabelVal || info.ShowDataLabelPercent);
         }
         else
         {
@@ -3854,7 +3885,9 @@ internal partial class ChartSvgRenderer
                     info.IsWaterfall, info.ErrorBars,
                     info.IsPercent && info.ShowDataLabelPercent && !info.ShowDataLabelVal,
                     info.DataLabelsNumFmt, info.Overlap, info.IsReversed, info.PerPointColors,
-                    info.CatAxisLabelRotationDeg, info.ValAxisLabelRotationDeg, info.Trendlines);
+                    info.CatAxisLabelRotationDeg, info.ValAxisLabelRotationDeg, info.Trendlines,
+                    info.ShowDataLabelSerName, info.ShowDataLabelCatName,
+                    info.ShowDataLabelVal || info.ShowDataLabelPercent);
         }
 
         // Plot-area border (<c:plotArea><c:spPr><a:ln>). Drawn AFTER the plot

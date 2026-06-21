@@ -551,12 +551,12 @@ public partial class WordHandler
             }
             if (ppr.SpacingBetweenLines?.Before?.Value != null)
             {
-                spaceBefore = SpacingConverter.FormatWordSpacing(ppr.SpacingBetweenLines.Before.Value);
+                spaceBefore = SpacingConverter.FormatWordSpacingNonNegative(ppr.SpacingBetweenLines.Before.Value);
                 spaceBeforeSrc = layer;
             }
             if (ppr.SpacingBetweenLines?.After?.Value != null)
             {
-                spaceAfter = SpacingConverter.FormatWordSpacing(ppr.SpacingBetweenLines.After.Value);
+                spaceAfter = SpacingConverter.FormatWordSpacingNonNegative(ppr.SpacingBetweenLines.After.Value);
                 spaceAfterSrc = layer;
             }
             if (ppr.SpacingBetweenLines?.Line?.Value != null)

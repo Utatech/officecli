@@ -3672,11 +3672,11 @@ public partial class WordHandler
             {
                 if (pProps.SpacingBetweenLines.Before?.Value != null)
                 {
-                    node.Format["spaceBefore"] = SpacingConverter.FormatWordSpacing(pProps.SpacingBetweenLines.Before.Value);
+                    node.Format["spaceBefore"] = SpacingConverter.FormatWordSpacingNonNegative(pProps.SpacingBetweenLines.Before.Value);
                 }
                 if (pProps.SpacingBetweenLines.After?.Value != null)
                 {
-                    node.Format["spaceAfter"] = SpacingConverter.FormatWordSpacing(pProps.SpacingBetweenLines.After.Value);
+                    node.Format["spaceAfter"] = SpacingConverter.FormatWordSpacingNonNegative(pProps.SpacingBetweenLines.After.Value);
                 }
                 if (pProps.SpacingBetweenLines.Line?.Value != null)
                 {

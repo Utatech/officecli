@@ -1741,6 +1741,38 @@ public partial class PowerPointHandler
              + $"{Pt(xE, yG)},{Pt(xD, yH)},{Pt(hc, yI)},{Pt(xB, yH)},{Pt(xA, yG)},{Pt(xL, vc)})";
     }
 
+    // quadArrow: a four-headed arrow cross (N/S/E/W). It was entirely missing from
+    // the preset switch, so it fell through to no clip-path and rendered as a plain
+    // rectangle. adj1 = shaft thickness, adj2 = arrowhead half-width, adj3 = head
+    // inset/notch depth (all default 22500). The ECMA guide chain pins them
+    // (a1<=2*a2, a3<=(100000-2*a2)/2). 24 straight-edge vertices, single connected.
+    // Path + guides taken verbatim from the ECMA-376 preset definition; verified
+    // against real PowerPoint at default and adj1=10000/adj2=30000/adj3=30000.
+    private static string QuadArrowPolygon(long widthEmu, long heightEmu, Drawing.PresetGeometry? presetGeom)
+    {
+        double w = widthEmu, h = heightEmu, ss = Math.Min(w, h);
+        var a2 = Math.Clamp(ReadAdjValueCss(presetGeom, 1, 22500), 0, 50000);
+        var maxAdj1 = a2 * 2;
+        var a1 = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 22500), 0, maxAdj1);
+        var maxAdj3 = (100000 - maxAdj1) / 2;
+        var a3 = Math.Clamp(ReadAdjValueCss(presetGeom, 2, 22500), 0, maxAdj3);
+        double x1 = ss * a3 / 100000.0;       // inset depth
+        double dx2 = ss * a2 / 100000.0;      // arrowhead half-width
+        double dx3 = ss * a1 / 200000.0;      // shaft half-width
+        double hc = w / 2, vc = h / 2;
+        double x2 = hc - dx2, x5 = hc + dx2, x3 = hc - dx3, x4 = hc + dx3, x6 = w - x1;
+        double y2 = vc - dx2, y5 = vc + dx2, y3 = vc - dx3, y4 = vc + dx3, y6 = h - x1;
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        string X(double v) => (v / w * 100).ToString("0.##", ci);
+        string Y(double v) => (v / h * 100).ToString("0.##", ci);
+        string P(double x, double y) => $"{X(x)}% {Y(y)}%";
+        return "clip-path:polygon("
+             + $"{P(0, vc)},{P(x1, y2)},{P(x1, y3)},{P(x3, y3)},{P(x3, x1)},{P(x2, x1)},"
+             + $"{P(hc, 0)},{P(x5, x1)},{P(x4, x1)},{P(x4, y3)},{P(x6, y3)},{P(x6, y2)},"
+             + $"{P(w, vc)},{P(x6, y5)},{P(x6, y4)},{P(x4, y4)},{P(x4, y6)},{P(x5, y6)},"
+             + $"{P(hc, h)},{P(x2, y6)},{P(x3, y6)},{P(x3, y4)},{P(x1, y4)},{P(x1, y5)})";
+    }
+
     private static string PresetGeometryToCss(string preset, long widthEmu, long heightEmu,
         Drawing.PresetGeometry? presetGeom)
     {
@@ -1817,6 +1849,8 @@ public partial class PowerPointHandler
             return MathPlusCss(widthEmu, heightEmu, presetGeom);
         if (preset == "mathMultiply" && widthEmu > 0 && heightEmu > 0)
             return MathMultiplyCss(widthEmu, heightEmu, presetGeom);
+        if (preset == "quadArrow" && widthEmu > 0 && heightEmu > 0)
+            return QuadArrowPolygon(widthEmu, heightEmu, presetGeom);
         // corner (L-shape): adj1 = bottom (horizontal) arm height %, adj2 = left
         // (vertical) arm width %; both default 50000. Inner corner at (adj2, 100-adj1).
         // The old hardcoded 50/50 ignored both, so a thin-armed L looked fat.

@@ -800,6 +800,26 @@ public partial class WordHandler
         var bIns = GetLongAttr(bodyPr, "bIns", 45720);
         style += $";padding:{tIns / EmuConverter.EmuPerPx}px {rIns / EmuConverter.EmuPerPx}px {bIns / EmuConverter.EmuPerPx}px {lIns / EmuConverter.EmuPerPx}px";
 
+        // Vertical text direction (bodyPr/@vert): rotate text via CSS writing-mode.
+        // OOXML vert values map to writing-mode the same way table-cell tcDir
+        // (Css.cs) and Excel textRotation (ExcelHandler.HtmlPreview.cs) do.
+        // CONSISTENCY(vertical-text): vertical-rl + text-orientation, see sibling renderers.
+        var vert = bodyPr?.GetAttributes().FirstOrDefault(a => a.LocalName == "vert").Value;
+        switch (vert)
+        {
+            case "eaVert":          // East Asian vertical: glyphs upright, columns right→left
+            case "mongolianVert":   // rare; degrade to upright vertical
+                style += ";writing-mode:vertical-rl;text-orientation:upright";
+                break;
+            case "vert":            // Latin rotated 90° CW (glyphs lie on their side)
+                style += ";writing-mode:vertical-rl";
+                break;
+            case "vert270":         // Latin rotated 90° CCW
+                style += ";writing-mode:vertical-rl;transform:rotate(180deg)";
+                break;
+            // "horz", null, or unknown → no writing-mode (stay horizontal)
+        }
+
         sb.Append($"<div style=\"{style}\">");
 
         // #7a: paint the geometry via inline SVG overlay when the preset

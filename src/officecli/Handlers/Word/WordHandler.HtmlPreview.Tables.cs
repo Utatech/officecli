@@ -438,7 +438,13 @@ public partial class WordHandler
                     if (cellListTag != null) { sb.Append($"</{cellListTag}>"); cellListTag = null; }
                 }
 
-                foreach (var child in cell.ChildElements)
+                // Walk cell children; block-level SDTs (content controls)
+                // wrap real paragraphs/tables, so recurse into the SDT content
+                // rather than dropping it. Placeholder/data-bound text inside a
+                // text-box layout table (e.g. the newsletter sidebar's
+                // "A Recent Success" block) lives under <w:sdt> here — handling
+                // only Paragraph/Table lost every nested run.
+                void RenderCellChild(OpenXmlElement child)
                 {
                     if (child is Paragraph cellPara)
                     {
@@ -446,7 +452,7 @@ public partial class WordHandler
                         if (listStyle != null)
                         {
                             RenderCellListItem(sb, cellPara, listStyle, ref cellListTag, olState);
-                            continue;
+                            return;
                         }
                         CloseCellList();
                         var text = GetParagraphText(cellPara);
@@ -466,7 +472,15 @@ public partial class WordHandler
                         CloseCellList();
                         RenderTableHtml(sb, nestedTable, depth: depth + 1, olState: olState);
                     }
+                    else if (child is SdtBlock sdt && sdt.SdtContentBlock is { } sdtContent)
+                    {
+                        foreach (var sdtChild in sdtContent.ChildElements)
+                            RenderCellChild(sdtChild);
+                    }
                 }
+
+                foreach (var child in cell.ChildElements)
+                    RenderCellChild(child);
                 CloseCellList();
 
                 if (exactWrap) sb.Append("</div>");

@@ -1007,14 +1007,8 @@ public partial class WordHandler
             // alone would skip <w:tbl> entirely (its row cell paragraphs would
             // surface as bare <p>s, losing the table structure). Mirror the
             // body-render pattern: Paragraph → RenderParagraphHtml,
-            // Table → RenderTableHtml.
-            foreach (var child in txbx.ChildElements)
-            {
-                if (child is Paragraph para)
-                    RenderParagraphHtml(sb, para);
-                else if (child is Table tbl)
-                    RenderTableHtml(sb, tbl);
-            }
+            // Table → RenderTableHtml, SdtBlock → recurse into content.
+            RenderTextBoxContentChildren(sb, txbx);
             sb.Append("</div>");
         }
         else
@@ -1030,6 +1024,29 @@ public partial class WordHandler
         }
 
         sb.Append("</div>");
+    }
+
+    /// <summary>
+    /// Render the block-level children of a text-box <c>w:txbxContent</c>
+    /// (DrawingML <c>wps:txbx</c> or VML <c>v:textbox</c>). Mirrors the
+    /// body/header-footer child dispatch: Paragraph → RenderParagraphHtml,
+    /// Table → RenderTableHtml, SdtBlock → recurse into the SDT content so
+    /// content controls (e.g. placeholder contact-info text inside a sidebar
+    /// text box) aren't silently dropped. Block-level SDTs wrap real
+    /// paragraphs/tables; iterating only Paragraph/Table here lost every run
+    /// nested under a <c>w:sdt</c>.
+    /// </summary>
+    private void RenderTextBoxContentChildren(StringBuilder sb, OpenXmlElement container)
+    {
+        foreach (var child in container.ChildElements)
+        {
+            if (child is Paragraph para)
+                RenderParagraphHtml(sb, para);
+            else if (child is Table tbl)
+                RenderTableHtml(sb, tbl);
+            else if (child is SdtBlock sdt && sdt.SdtContentBlock is { } content)
+                RenderTextBoxContentChildren(sb, content);
+        }
     }
 
     // ==================== #7a prstGeom SVG helpers ====================

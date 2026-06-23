@@ -1035,8 +1035,15 @@ public partial class WordHandler
             var ph = widthPx > 0 && heightPx > 0
                 ? $"width:{widthPx}px;height:{heightPx}px;max-width:100%"
                 : "min-width:200px;min-height:100px";
-            sb.Append($"<div class=\"ole-placeholder\" style=\"{ph};border:1px dashed #bbb;background:#f5f5f5;display:flex;align-items:center;justify-content:center;color:#888;font-size:13px;margin:8px 0\">");
-            sb.Append("Embedded Object (preview not supported in browser)");
+            // Only label the box when it is large enough to hold the text.
+            // Small object glyphs (e.g. ActiveX OptionButton radios drawn as
+            // tiny WMF images, often dozens per form) would otherwise flood
+            // their cells with verbose text; the dashed box alone is the
+            // placeholder footprint there. overflow:hidden keeps any label
+            // inside the footprint instead of spilling into the layout.
+            var labelOle = (widthPx == 0 || widthPx >= 120) && (heightPx == 0 || heightPx >= 36);
+            sb.Append($"<div class=\"ole-placeholder\" style=\"{ph};border:1px dashed #bbb;background:#f5f5f5;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#888;font-size:13px;margin:8px 0\">");
+            if (labelOle) sb.Append("Embedded object");
             sb.Append("</div>");
         }
     }

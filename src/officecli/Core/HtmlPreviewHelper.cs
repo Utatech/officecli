@@ -42,13 +42,15 @@ internal static class HtmlPreviewHelper
             using var ms = new MemoryStream();
             stream.CopyTo(ms);
             var contentType = part.ContentType ?? "image/png";
-            if (IsVectorMetafile(contentType))
+            var undecodableLabel = UndecodableImageLabel(contentType);
+            if (undecodableLabel != null)
             {
-                // WMF/EMF metafiles cannot be decoded by browsers (no <img> support)
-                // and there is no cross-platform .NET rasterizer. Degrade gracefully to
-                // a self-contained SVG placeholder so the preview shows a clean framed box
-                // instead of a broken-image icon.
-                return MetafilePlaceholderDataUri(contentType);
+                // WMF/EMF metafiles and TIFF rasters cannot be rendered by browsers in an
+                // <img> tag, and there is no cross-platform .NET rasterizer/transcoder
+                // available (the project deliberately avoids System.Drawing/GDI). Degrade
+                // gracefully to a self-contained SVG placeholder so the preview shows a
+                // clean framed box instead of a broken-image icon.
+                return PlaceholderDataUri(undecodableLabel);
             }
             return $"data:{contentType};base64,{Convert.ToBase64String(ms.ToArray())}";
         }
@@ -59,26 +61,33 @@ internal static class HtmlPreviewHelper
     }
 
     /// <summary>
-    /// True for WMF/EMF metafile content types that browsers cannot render in an
-    /// &lt;img&gt; tag (image/wmf, image/x-wmf, image/emf, image/x-emf).
+    /// Returns a short placeholder label (e.g. "WMF", "EMF", "TIFF") for image content
+    /// types that browsers cannot render in an &lt;img&gt; tag, or null for natively
+    /// renderable rasters (PNG/JPG/GIF/BMP/WebP) and SVG. Covers:
+    ///   - WMF/EMF metafiles: image/wmf, image/x-wmf, image/emf, image/x-emf
+    ///   - TIFF rasters: image/tiff, image/tif, image/x-tiff
+    /// (no cross-platform decoder/transcoder is available, so even though TIFF is a
+    /// raster format it degrades to a placeholder like the metafiles).
     /// </summary>
-    private static bool IsVectorMetafile(string contentType)
+    private static string? UndecodableImageLabel(string contentType)
     {
-        return contentType.Equals("image/wmf", StringComparison.OrdinalIgnoreCase)
-            || contentType.Equals("image/x-wmf", StringComparison.OrdinalIgnoreCase)
-            || contentType.Equals("image/emf", StringComparison.OrdinalIgnoreCase)
-            || contentType.Equals("image/x-emf", StringComparison.OrdinalIgnoreCase);
+        if (contentType.IndexOf("emf", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "EMF";
+        if (contentType.IndexOf("wmf", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "WMF";
+        if (contentType.IndexOf("tif", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "TIFF";
+        return null;
     }
 
     /// <summary>
-    /// Build a base64-encoded SVG data URI placeholder for an undecodable metafile.
+    /// Build a base64-encoded SVG data URI placeholder for an undecodable image.
     /// The SVG uses a viewBox + preserveAspectRatio so it scales to fill the host
     /// &lt;img&gt; width/height, drawing a light-gray bordered rectangle with a centered
-    /// label (WMF or EMF). Base64 encoding avoids any data-URI escaping concerns.
+    /// label (WMF/EMF/TIFF). Base64 encoding avoids any data-URI escaping concerns.
     /// </summary>
-    private static string MetafilePlaceholderDataUri(string contentType)
+    private static string PlaceholderDataUri(string label)
     {
-        var label = contentType.IndexOf("emf", StringComparison.OrdinalIgnoreCase) >= 0 ? "EMF" : "WMF";
         var svg =
             "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 120 120\" " +
             "preserveAspectRatio=\"xMidYMid meet\">" +

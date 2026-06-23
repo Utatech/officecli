@@ -325,6 +325,35 @@ public static class McpServer
             }
         }
         else if (handler is Handlers.ExcelHandler ex) html = ex.ViewAsHtml();
+        else if (handler is Handlers.WordHandler whGrid && grid > 0)
+        {
+            // Contact-sheet grid (HTML-only) — mirrors CommandBuilder.View.cs's
+            // docx grid branch. See its CONSISTENCY(grid-html-only) note.
+            const int gap = 12, pad = 12, maxDim = 1920, scrollbar = 17;
+            var (npW, npH) = whGrid.GetPageNativePixels();
+            double provCellW = Math.Max(1.0, (width - pad * 2.0 - (grid - 1) * gap) / grid);
+            int pageCount = 1;
+            var tmpForCount = Path.Combine(Path.GetTempPath(), $"officecli_gridcount_{Path.GetFileNameWithoutExtension(file)}_{Guid.NewGuid():N}.html");
+            try
+            {
+                File.WriteAllText(tmpForCount, whGrid.ViewAsHtml(null, grid, (int)Math.Round(provCellW)));
+                pageCount = OfficeCli.Core.HtmlScreenshot.GetPageCountFromDom(tmpForCount) ?? 1;
+            }
+            catch { /* fall back to 1 row */ }
+            finally { try { File.Delete(tmpForCount); } catch { /* ignore */ } }
+
+            int rows = Math.Max(1, (pageCount + grid - 1) / grid);
+            double vpW = width;
+            double cellW = Math.Max(1.0, (vpW - scrollbar - pad * 2.0 - (grid - 1) * gap) / grid);
+            double cellH = cellW * npH / npW;
+            double vpH = pad * 2 + rows * cellH + (rows - 1) * gap;
+            double over = Math.Max(vpW, vpH) / maxDim;
+            if (over > 1.0) { vpW /= over; cellW /= over; cellH /= over; vpH /= over; }
+
+            html = whGrid.ViewAsHtml(null, grid, (int)Math.Round(cellW));
+            width = Math.Max(1, (int)Math.Round(vpW));
+            height = Math.Max(1, (int)Math.Ceiling(vpH));
+        }
         else if (handler is Handlers.WordHandler wh)
         {
             // CONSISTENCY(screenshot-default-first-page): mirror CLI — screenshot
@@ -754,7 +783,7 @@ Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=val
         // screenshot_width / screenshot_height / grid (screenshot mode)
         w.WriteStartObject("screenshot_width"); w.WriteString("type", "number"); w.WriteString("description", "Viewport width for screenshot mode (default 1600)"); w.WriteEndObject();
         w.WriteStartObject("screenshot_height"); w.WriteString("type", "number"); w.WriteString("description", "Viewport height for screenshot mode (default 1200)"); w.WriteEndObject();
-        w.WriteStartObject("grid"); w.WriteString("type", "number"); w.WriteString("description", "Tile slides into N-column thumbnail grid (screenshot mode, pptx only; 0 = off)"); w.WriteEndObject();
+        w.WriteStartObject("grid"); w.WriteString("type", "number"); w.WriteString("description", "Tile pages/slides into N-column thumbnail contact sheet (screenshot mode, pptx + docx; 0 = off)"); w.WriteEndObject();
         // depth
         w.WriteStartObject("depth"); w.WriteString("type", "number"); w.WriteString("description", "Child depth for get (default 1)"); w.WriteEndObject();
         // index

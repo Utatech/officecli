@@ -428,7 +428,7 @@ Borders use the format `style;size;color;space`: `single;4;FF0000;1`. Hex colors
 2. `officecli view "$FILE" outline` — heading hierarchy (no H1 → H3 skips), TOC presence, section count.
 3. `officecli view "$FILE" text --max-lines 400` — typos, stray `\$`/`\t`/`\n` literals, placeholder tokens.
 4. `officecli validate "$FILE"` — schema check (`close` any resident first — `validate` + open resident conflict and report spurious `drawing`/`tableParts` errors).
-5. **Visual pass — walk every page via `view html`** and Read the returned path. "validate pass" is not delivery; "the preview looks like a real document" is.
+5. **Visual pass — see the whole document as a contact sheet:** `officecli view "$FILE" screenshot --grid 3 -o /tmp/sheet.png`, then Read `/tmp/sheet.png`. This tiles **every page** into one rasterized image (3 columns; raise to `--grid 4`+ for long docs) — you actually *see* pagination, blank pages, broken heading rhythm, lopsided margins, and where the TOC/cover land, not just the DOM. On Windows with Word installed, single-page shots (`--page N`, no `--grid`) render through real Word; the grid always uses the HTML preview. If `screenshot` errors (no headless browser: needs Chrome/Edge/Chromium/Firefox or `playwright`), fall back to `view html` + Read the path — but the DOM can't prove cross-page breaks, column alignment, or visual rhythm, so flag those as "not visually verified". "validate pass" is not delivery; "the contact sheet looks like a real document" is.
 6. If anything failed, fix, then **rerun the full cycle** — one fix commonly creates another problem.
 
 ### Delivery Gate (run before handing off — any failure = REJECT, do NOT deliver)
@@ -463,7 +463,7 @@ Fields carry cached values that may be stale or empty at write time — confirm 
 
 ### Honest limit
 
-`validate` catches schema errors, not design errors — a document can pass it with wrong heading hierarchy, fake-Heading-1 sizes, placeholder tokens as body text, or an empty first-page footer on a coverless document. The HTML-preview visual pass and the field-structure check are how you catch what validation can't.
+`validate` catches schema errors, not design errors — a document can pass it with wrong heading hierarchy, fake-Heading-1 sizes, placeholder tokens as body text, or an empty first-page footer on a coverless document. The contact-sheet visual pass (`screenshot --grid`) and the field-structure check are how you catch what validation can't.
 
 ### QA display notes (don't chase these)
 

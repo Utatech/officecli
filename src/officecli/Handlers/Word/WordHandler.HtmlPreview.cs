@@ -101,12 +101,19 @@ public partial class WordHandler
     /// Generate a self-contained HTML file that previews the Word document
     /// with formatting, tables, images, and lists.
     /// </summary>
-    public string ViewAsHtml(string? pageFilter = null)
+    /// <param name="gridCols">When &gt; 0, render every page tiled into a
+    /// thumbnail contact-sheet grid this many columns wide (screenshot mode).
+    /// Mirrors pptx's HTML grid; <paramref name="pageFilter"/> is ignored
+    /// (the grid always shows the whole document).</param>
+    /// <param name="gridCellWpx">Exact thumbnail cell width in CSS px. The CLI
+    /// computes this from the viewport width and column count so the C# height
+    /// math and the in-browser layout agree exactly.</param>
+    public string ViewAsHtml(string? pageFilter = null, int gridCols = 0, int gridCellWpx = 0)
     {
         using var _cul = InvariantCultureScope.Enter();
         try
         {
-            return ViewAsHtmlCore(pageFilter);
+            return ViewAsHtmlCore(pageFilter, gridCols, gridCellWpx);
         }
         catch (System.Xml.XmlException)
         {
@@ -119,7 +126,7 @@ public partial class WordHandler
         }
     }
 
-    private string ViewAsHtmlCore(string? pageFilter)
+    private string ViewAsHtmlCore(string? pageFilter, int gridCols = 0, int gridCellWpx = 0)
     {
         _ctx = new HtmlRenderContext();
         ResolveThemeCjkFont();
@@ -977,8 +984,8 @@ public partial class WordHandler
       document.querySelectorAll('a[id^=""_Toc""]').forEach(function(a){
         for(var i=0;i<pgs.length;i++) if(pgs[i].contains(a)){pmap.push(a.id+'='+(i+1));break;}
       });
-      applyPageFilter();
-      flushScreenshotPage();
+      if(window._gridCols>0){layoutGrid(window._gridCols);}
+      else{applyPageFilter();flushScreenshotPage();}
       document.title='PAGES:'+pgs.length+(pmap.length?'|MAP:'+pmap.join(','):'');
     }
     else{setTimeout(positionFootnotes,0);setTimeout(wrapFloats,0);setTimeout(applyLineNumbers,0);setTimeout(applyPageFilter,0);setTimeout(function(){scalePages(false);},0);}
@@ -1138,6 +1145,37 @@ public partial class WordHandler
     var w=page.closest('.page-wrapper');if(w)w.style.margin='0';
     document.querySelectorAll('.page-wrapper').forEach(function(pw){if(pw!==w)pw.style.display='none';});
   }
+  // Contact-sheet grid: scale every page down to a fixed cell width and let the
+  // body flex-wrap tile them into _gridCols columns. cellW comes from the CLI
+  // (window._gridCellW) so the captured viewport height (computed C#-side from
+  // page count) matches the laid-out grid exactly. Mirrors flushScreenshotPage's
+  // chrome-stripping but for ALL pages instead of clipping to one.
+  function layoutGrid(cols){
+    if(!cols||cols<1)return;
+    var gap=12,pad=12;
+    // Derive cellW from the live content width (excludes any scrollbar) so the
+    // requested column count always fits — trusting a CLI-passed width risks the
+    // scrollbar/rounding pushing the last column to a new row. Floor for safety.
+    var avail=document.body.clientWidth-2*pad;
+    var cellW=Math.floor((avail-(cols-1)*gap)/cols);
+    if(cellW<1)cellW=window._gridCellW||220;
+    var wraps=Array.prototype.filter.call(document.querySelectorAll('.page-wrapper'),function(w){return w.offsetParent!==null;});
+    wraps.forEach(function(wrapper){
+      var page=wrapper.querySelector('.page');if(!page)return;
+      var pageW=page.offsetWidth,pageH=page.offsetHeight;
+      var s=pageW>0?cellW/pageW:1;
+      page.style.transition='none';page.style.transformOrigin='top left';
+      page.style.transform='scale('+s+')';
+      page.style.boxShadow='none';page.style.borderRadius='0';
+      wrapper.style.transition='none';wrapper.style.margin='0';
+      wrapper.style.width=cellW+'px';wrapper.style.height=Math.round(pageH*s)+'px';
+      wrapper.style.overflow='hidden';
+    });
+    var b=document.body;
+    b.style.display='flex';b.style.flexWrap='wrap';
+    b.style.alignContent='flex-start';b.style.justifyContent='center';b.style.alignItems='flex-start';
+    b.style.gap=gap+'px';b.style.padding=pad+'px';
+  }
   function _loadKatexLazy(cb){
     // Watch mode: doc may start formula-free (KaTeX tags omitted), then
     // gain a formula via SSE patch. Inject CSS + JS on demand; on load,
@@ -1223,11 +1261,20 @@ public partial class WordHandler
         // Pass requested pages to JS for post-pagination filtering
         if (requestedPages != null && requestedPages.Count > 0)
             sb.AppendLine($"  window._requestedPages=[{string.Join(",", requestedPages)}];");
+        // Contact-sheet grid: tile every page into gridCols columns. cellW is
+        // supplied by the CLI (not derived from clientWidth) so the C# viewport
+        // height math and the in-browser layout use the identical cell size.
+        if (gridCols > 0)
+        {
+            sb.AppendLine($"  window._gridCols={gridCols};");
+            if (gridCellWpx > 0) sb.AppendLine($"  window._gridCellW={gridCellWpx};");
+        }
         sb.AppendLine(@"  var SCREENSHOT=location.hash.indexOf('screenshot')>=0||navigator.webdriver||/HeadlessChrome/.test(navigator.userAgent);
   window._wpSync=SCREENSHOT;
   if(SCREENSHOT){
     var rp=window._requestedPages;
-    if(rp&&rp.length===1&&rp[0]===1){
+    if(window._gridCols>0){paginate();}
+    else if(rp&&rp.length===1&&rp[0]===1){
       // Page 1 is the first .page before pagination — flush it directly, skipping
       // the full paginate pass. Other single pages go through paginate and flush
       // at its sync completion. flushScreenshotPage clips + drops the chrome.

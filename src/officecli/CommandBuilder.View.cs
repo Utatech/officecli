@@ -20,12 +20,12 @@ static partial class CommandBuilder
         var limitOpt = new Option<int?>("--limit") { Description = "Limit number of results" };
 
         var colsOpt = new Option<string?>("--cols") { Description = "Column filter, comma-separated (Excel only, e.g. A,B,C)" };
-        var pageOpt = new Option<string?>("--page") { Description = "Page filter (e.g. 1, 2-5, 1,3,5). html mode: default=all. screenshot mode: default=1 (use --page 1-N to capture more, or --grid N for pptx thumbnails)." };
+        var pageOpt = new Option<string?>("--page") { Description = "Page filter (e.g. 1, 2-5, 1,3,5). html mode: default=all. screenshot mode: default=1 (use --page 1-N to capture more, or --grid N for a whole-doc thumbnail contact sheet)." };
         var browserOpt = new Option<bool>("--browser") { Description = "Open output in browser (html / svg modes)" };
         var outOpt = new Option<string?>("--out", "-o") { Description = "Output file path (screenshot mode; defaults to a temp file)" };
         var screenshotWidthOpt = new Option<int>("--screenshot-width") { Description = "Screenshot viewport width (default 1600)", DefaultValueFactory = _ => 1600 };
         var screenshotHeightOpt = new Option<int>("--screenshot-height") { Description = "Screenshot viewport height (default 1200)", DefaultValueFactory = _ => 1200 };
-        var gridOpt = new Option<int>("--grid") { Description = "Tile slides into an N-column thumbnail grid (screenshot mode, pptx only; 0 = off)", DefaultValueFactory = _ => 0 };
+        var gridOpt = new Option<int>("--grid") { Description = "Tile pages/slides into an N-column thumbnail contact sheet (screenshot mode, pptx + docx; 0 = off)", DefaultValueFactory = _ => 0 };
         var renderOpt = new Option<string>("--render") { Description = "Screenshot rendering path (docx/pptx): auto (default; native on Windows w/ Word/PowerPoint, html elsewhere), native (force OS-native, error if unavailable), html", DefaultValueFactory = _ => "auto" };
         var withPagesOpt = new Option<bool>("--page-count") { Description = "stats mode (docx only): also report total page count via Word repagination (Win + Word required; slow on long docs)" };
 
@@ -267,6 +267,57 @@ static partial class CommandBuilder
                 }
                 else if (handler is OfficeCli.Handlers.ExcelHandler excelHandler)
                     html = excelHandler.ViewAsHtml();
+                else if (handler is OfficeCli.Handlers.WordHandler wordHandlerGrid && gridCols > 0)
+                {
+                    // Contact-sheet grid: tile every page into a gridCols-wide
+                    // thumbnail grid for a one-shot whole-document overview.
+                    // HTML-only (even on Windows) — a structural overview doesn't
+                    // need real-Word fidelity, and the native PDF path has no
+                    // page-downscale+tile step. Single-page docx screenshots keep
+                    // native-Word-first in the branch below.
+                    // CONSISTENCY(grid-html-only): mirrors pptx's HTML CSS grid;
+                    // pptx additionally has a native grid (PowerPointPngBackend.
+                    // RenderGrid) we deliberately don't replicate for docx.
+                    const int gap = 12, pad = 12;
+                    const int maxDim = 1920; // mirror HtmlScreenshot.CapDim's LLM-image ceiling
+                    var (npW, npH) = wordHandlerGrid.GetPageNativePixels();
+
+                    // Page count needs a real layout pass; the preview's paginator
+                    // publishes it via <title>PAGES:N> on dump-dom. We render the grid
+                    // HTML once (cell width still provisional), read the count, then
+                    // size the captured viewport to exactly fit ceil(N/cols) rows.
+                    double provisionalCellW = Math.Max(1.0, (screenshotWidth - 2.0 * pad - (gridCols - 1) * gap) / gridCols);
+                    int pageCount = 1;
+                    var tmpForCount = Path.Combine(Path.GetTempPath(), $"officecli_gridcount_{Path.GetFileNameWithoutExtension(file.Name)}_{Guid.NewGuid():N}.html");
+                    try
+                    {
+                        File.WriteAllText(tmpForCount, wordHandlerGrid.ViewAsHtml(null, gridCols, (int)Math.Round(provisionalCellW)));
+                        pageCount = OfficeCli.Core.HtmlScreenshot.GetPageCountFromDom(tmpForCount) ?? 1;
+                    }
+                    catch { /* fall back to 1 row */ }
+                    finally { try { File.Delete(tmpForCount); } catch { /* ignore */ } }
+
+                    int rows = Math.Max(1, (pageCount + gridCols - 1) / gridCols);
+
+                    // Pre-cap to the 1920 ceiling OURSELVES and recompute cellW from the
+                    // final width, so cellW and the capture viewport stay consistent
+                    // (CapDim shrinking the viewport while cellW stayed fixed is what
+                    // collapsed a 3-col request to 2 cols). After this, CapDim is a no-op.
+                    // Subtract a scrollbar allowance so this matches layoutGrid's
+                    // clientWidth-derived cell size → the row-height estimate (and thus
+                    // the captured viewport) tracks the real grid with little slack.
+                    const int scrollbar = 17;
+                    double vpW = screenshotWidth;
+                    double cellW = Math.Max(1.0, (vpW - scrollbar - 2.0 * pad - (gridCols - 1) * gap) / gridCols);
+                    double cellH = cellW * npH / npW;
+                    double vpH = pad * 2 + rows * cellH + (rows - 1) * gap;
+                    double over = Math.Max(vpW, vpH) / maxDim;
+                    if (over > 1.0) { vpW /= over; cellW /= over; cellH /= over; vpH /= over; }
+
+                    html = wordHandlerGrid.ViewAsHtml(null, gridCols, (int)Math.Round(cellW));
+                    screenshotWidth = Math.Max(1, (int)Math.Round(vpW));
+                    screenshotHeight = Math.Max(1, (int)Math.Ceiling(vpH));
+                }
                 else if (handler is OfficeCli.Handlers.WordHandler wordHandler)
                 {
                     var effectiveFilter = string.IsNullOrEmpty(pageFilter) ? "1" : pageFilter;

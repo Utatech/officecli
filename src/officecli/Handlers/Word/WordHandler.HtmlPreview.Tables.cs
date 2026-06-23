@@ -508,6 +508,20 @@ public partial class WordHandler
                 {
                     if (child is Paragraph cellPara)
                     {
+                        // Display equation inside a cell: a <w:p> whose content is
+                        // an <m:oMathPara>/<m:oMath> wrapper. Body paragraphs route
+                        // these to a katex-formula span (HtmlPreview.cs ~line 2362);
+                        // the cell path historically lacked the branch, so in-cell
+                        // formulas (e.g. §7 Indicadores fractions) rendered blank.
+                        // Mirror the body emit so cell math surfaces identically.
+                        var cellOMath = cellPara.ChildElements.FirstOrDefault(e => e.LocalName == "oMathPara" || e.LocalName == "oMath" || e is M.Paragraph || e is M.OfficeMath);
+                        if (cellOMath != null)
+                        {
+                            CloseCellList();
+                            var mathLatex = FormulaParser.ToLatex(cellOMath);
+                            sb.Append($"<div class=\"equation\"><span class=\"katex-formula\" data-formula=\"{HtmlEncodeAttr(mathLatex)}\" data-display=\"true\"></span></div>");
+                            return;
+                        }
                         var listStyle = GetParagraphListStyle(cellPara);
                         if (listStyle != null)
                         {

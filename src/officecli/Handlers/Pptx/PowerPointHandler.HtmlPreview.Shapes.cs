@@ -30,7 +30,8 @@ public partial class PowerPointHandler
         if (prstGeomEarly?.Preset?.HasValue == true
             && prstGeomEarly.Preset.InnerText == "line")
         {
-            RenderConnector(sb, shape.ShapeProperties, themeColors, dataPath, overridePos);
+            RenderConnector(sb, shape.ShapeProperties, themeColors, dataPath, overridePos,
+                style: shape.ShapeStyle, part: part);
             return;
         }
 
@@ -115,7 +116,8 @@ public partial class PowerPointHandler
             && shape.ShapeProperties?.GetFirstChild<Drawing.Outline>() != null
             && string.IsNullOrWhiteSpace(GetShapeText(shape)))
         {
-            RenderConnector(sb, shape.ShapeProperties, themeColors, dataPath, overridePos);
+            RenderConnector(sb, shape.ShapeProperties, themeColors, dataPath, overridePos,
+                style: shape.ShapeStyle, part: part);
             return;
         }
 
@@ -1782,11 +1784,13 @@ public partial class PowerPointHandler
     // ==================== Connector Rendering ====================
 
     private static void RenderConnector(StringBuilder sb, ConnectionShape cxn, Dictionary<string, string> themeColors, string? dataPath = null,
-        (long x, long y, long cx, long cy)? overridePos = null)
+        (long x, long y, long cx, long cy)? overridePos = null, OpenXmlPart? part = null)
         // R15-1: resolve the connector's txBody (handles the SDK OpenXmlUnknownElement
         // parse) and forward it so the label renders as a centered overlay on the line.
+        // R234: forward ShapeStyle + part so a style-only connector (no <a:ln>) resolves
+        // its lnRef stroke color/width from the theme line-style matrix.
         => RenderConnector(sb, cxn.ShapeProperties, themeColors, dataPath, overridePos,
-            ResolveConnectorTextBody(cxn));
+            ResolveConnectorTextBody(cxn), cxn.ShapeStyle, part);
 
     // Shared SVG line/polyline/path renderer for both <p:cxnSp> connectors and
     // <p:sp> shapes with prst="line". Reads geometry + outline from a
@@ -1798,7 +1802,8 @@ public partial class PowerPointHandler
     // far outside the group div, where it disappears.
     private static void RenderConnector(StringBuilder sb, ShapeProperties? spPr, Dictionary<string, string> themeColors, string? dataPath = null,
         (long x, long y, long cx, long cy)? overridePos = null,
-        DocumentFormat.OpenXml.Presentation.TextBody? cxnTextBody = null)
+        DocumentFormat.OpenXml.Presentation.TextBody? cxnTextBody = null,
+        ShapeStyle? style = null, OpenXmlPart? part = null)
     {
         var xfrm = spPr?.Transform2D;
         if (overridePos == null && (xfrm?.Offset == null || xfrm?.Extents == null)) return;
@@ -1852,6 +1857,20 @@ public partial class PowerPointHandler
             if (outline.Width?.HasValue == true) lineWidth = outline.Width.Value / EmuConverter.EmuPerPointF;
             if (outline.CapType?.HasValue == true) lineCap = outline.CapType.InnerText ?? "flat";
             if (outline.CompoundLineType?.HasValue == true) lineCmpd = outline.CompoundLineType.InnerText ?? "sng";
+        }
+        else
+        {
+            // Style-matrix lnRef fallback (parity with RenderShape / RenderPicture):
+            // a connector with NO explicit <a:ln> takes its color and weight from
+            // <p:style>/<a:lnRef idx=N> against the theme line-style matrix. Every
+            // default PowerPoint connector is styled this way (typically an accent
+            // color), so without this the line wrongly rendered theme-tx1 black.
+            var stroke = ResolveStyleLineRefStroke(style, part, themeColors);
+            if (stroke != null)
+            {
+                lineColor = stroke.Value.color;
+                lineWidth = stroke.Value.widthPt;
+            }
         }
 
         // Ensure minimum dimensions so the line is visible
@@ -2261,7 +2280,7 @@ public partial class PowerPointHandler
                     // placed the connector far outside the group (invisible).
                     var pos = CalcGroupChildPos(cxn.ShapeProperties?.Transform2D, offX, offY, scaleX, scaleY);
                     if (pos.HasValue)
-                        RenderConnector(sb, cxn, themeColors, dataPath: null, overridePos: pos);
+                        RenderConnector(sb, cxn, themeColors, dataPath: null, overridePos: pos, part: slidePart);
                     break;
                 }
                 case GraphicFrame gf:
@@ -2387,7 +2406,7 @@ public partial class PowerPointHandler
                     // CONSISTENCY(group-child-pos): see RenderGroup ConnectionShape branch.
                     var pos = CalcGroupChildPos(cxn.ShapeProperties?.Transform2D, offX, offY, scaleX, scaleY);
                     if (pos.HasValue)
-                        RenderConnector(sb, cxn, themeColors, dataPath: null, overridePos: pos);
+                        RenderConnector(sb, cxn, themeColors, dataPath: null, overridePos: pos, part: slidePart);
                     break;
                 }
                 case GraphicFrame gf:

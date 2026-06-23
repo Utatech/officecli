@@ -919,6 +919,34 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
+    /// Style-matrix stroke fallback for SVG connectors/lines: resolve
+    /// <p:style>/<a:lnRef idx=N> to a (color, widthPt) stroke. This parallels
+    /// GetStyleLineRefCss (which returns a CSS "border:" for box shapes) but yields
+    /// the raw stroke color + width an SVG <line>/<polyline> needs. Returns null when
+    /// there is no usable lnRef. A default PowerPoint connector carries NO explicit
+    /// <a:ln>; its color/weight come entirely from this lnRef against the theme
+    /// FormatScheme.LineStyleList, so without this the line renders theme-tx1 black.
+    /// </summary>
+    private static (string color, double widthPt)? ResolveStyleLineRefStroke(
+        ShapeStyle? style, OpenXmlPart? part, Dictionary<string, string> themeColors)
+    {
+        var lnRef = style?.LineReference;
+        var idx = lnRef?.Index?.Value ?? 0;
+        if (lnRef == null || idx == 0 || part == null) return null;
+
+        var refColor = ResolveStyleRefSchemeColor(lnRef, themeColors)
+            ?? (themeColors.TryGetValue("dk1", out var dk1) ? $"#{dk1}" : "#000000");
+
+        var fmtScheme = ResolveFormatScheme(part);
+        var lineStyle = fmtScheme?.LineStyleList?.ChildElements
+            .OfType<Drawing.Outline>()
+            .ElementAtOrDefault((int)idx - 1);
+        var widthPt = lineStyle?.Width?.HasValue == true
+            ? lineStyle.Width!.Value / EmuConverter.EmuPerPointF : 1.0;
+        return (refColor, widthPt);
+    }
+
+    /// <summary>
     /// Style-matrix effect fallback: resolve <p:style>/<a:effectRef idx=N> against
     /// FormatScheme.EffectStyleList[N] (1-based), reusing EffectListToShadowCss on the
     /// indexed effect style's <a:effectLst>. Returns the shadow CSS, or "" if none.

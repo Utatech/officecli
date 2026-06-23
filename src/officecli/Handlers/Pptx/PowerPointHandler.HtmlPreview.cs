@@ -707,7 +707,7 @@ public partial class PowerPointHandler
                     break;
                 case ConnectionShape cxn:
                     cxnIdx++;
-                    RenderConnector(sb, cxn, themeColors, dataPath: PathFor("connector", cxn, cxnIdx));
+                    RenderConnector(sb, cxn, themeColors, dataPath: PathFor("connector", cxn, cxnIdx), part: slidePart);
                     break;
                 case GroupShape grp:
                     groupIdx++;
@@ -804,7 +804,7 @@ public partial class PowerPointHandler
                     RenderGroup(sb, grp, part, themeColors);
                     break;
                 case ConnectionShape cxn:
-                    RenderConnector(sb, cxn, themeColors);
+                    RenderConnector(sb, cxn, themeColors, part: part);
                     break;
                 case GraphicFrame gf:
                     // Only tables are cheap to inherit here; RenderChart needs a

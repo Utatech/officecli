@@ -1674,14 +1674,23 @@ public partial class WordHandler
                 parts.Add($"letter-spacing:{sp / 20.0:0.##}pt");
         }
 
-        // Character scale (w:w, horizontal stretch as a percentage). Use inline-block +
-        // transform scaleX so rendering width actually changes — transform alone collapses
-        // space reservation. Default/unit value 100% → skip.
+        // Character scale (w:w, horizontal stretch as a percentage). Render via a bare
+        // transform:scaleX — NOT display:inline-block. CSS transforms are paint-only and
+        // never affect layout, so inline-block bought no width reservation here (the scaled
+        // glyphs overflow the box at any ratio != 1 regardless of display); its only effect
+        // was to shrink-wrap the run and trim its leading/trailing whitespace. inline-block
+        // boxes drop trailing whitespace at the box edge (Chromium hangs it with zero
+        // advance, irrespective of white-space:pre/pre-wrap/break-spaces), so a run ending
+        // in a space ("Once the ministry has ") butted against the next run and rendered as
+        // "hasreviewed". A bare inline transform keeps the run inline, so its own boundary
+        // spaces survive and word gaps are preserved; overflow at large w:w is equal to or
+        // milder than the inline-block path (the inline space buffers the next run). Only the
+        // w:w branch is touched — unscaled runs are untouched. Default/unit 100% → skip.
         var charScale = rProps.CharacterScale?.Val?.Value;
         if (charScale.HasValue && charScale.Value > 0 && charScale.Value != 100)
         {
             var ratio = charScale.Value / 100.0;
-            parts.Add($"display:inline-block;transform:scaleX({ratio:0.##});transform-origin:left");
+            parts.Add($"transform:scaleX({ratio:0.##});transform-origin:left");
         }
 
         // Color: w:color val + themeColor with tint/shade. Route through

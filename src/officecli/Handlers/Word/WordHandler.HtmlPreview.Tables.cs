@@ -363,7 +363,8 @@ public partial class WordHandler
 
         var rows = table.Elements<TableRow>().ToList();
         var totalRows = rows.Count;
-        var totalCols = tblGrid?.Elements<GridColumn>().Count() ?? rows.FirstOrDefault()?.Elements<TableCell>().Count() ?? 0;
+        var totalCols = tblGrid?.Elements<GridColumn>().Count()
+            ?? (rows.FirstOrDefault() is { } firstRow ? GetRowCellsFlattened(firstRow).Count : 0);
 
         for (int rowIdx = 0; rowIdx < totalRows; rowIdx++)
         {
@@ -395,7 +396,15 @@ public partial class WordHandler
             sb.AppendLine(isHeader ? $"<tr class=\"header-row\"{hdrMarker}{rowDataPathAttr}{trStyle}>" : $"<tr{rowDataPathAttr}{trStyle}>");
 
             int colIdx = 0;
-            foreach (var cell in row.Elements<TableCell>())
+            // Cell-level content controls (<w:sdt> wrapping a <w:tc> as a direct
+            // <w:tr> child — Word's dropdown-bound / placeholder form-field cell
+            // shape) are NOT direct TableCell children of the row, so
+            // Elements<TableCell>() dropped them entirely, leaving the form cell
+            // blank (e.g. the staff-evaluation form's "Click or tap here to
+            // enter text." placeholder cells under <w:showingPlcHdr>). Flatten
+            // through GetRowCellsFlattened so every cell — wrapped or not —
+            // renders, mirroring the Get/Query/dump cell-flatten contract.
+            foreach (var cell in GetRowCellsFlattened(row))
             {
                 var tag = isHeader ? "th" : "td";
                 var condTypes = GetConditionalTypes(tblLook, rowIdx, colIdx, totalRows, totalCols);

@@ -2124,6 +2124,15 @@ public partial class PowerPointHandler
         // (the SVG sits in an overflow:visible div, so filter:drop-shadow applies to the
         // stroke). Inner shadow has no CSS-filter equivalent on a line, so skip it.
         var cxnEffectList = spPr?.GetFirstChild<Drawing.EffectList>();
+        // Style-matrix fallback: when the connector's spPr carries no explicit
+        // <a:effectLst>, resolve its <p:style>/<a:effectRef> against the theme
+        // EffectStyleList — exactly as the shape (RenderShape ~line 347) and
+        // picture (~line 1508) paths already do. A connector styled via the
+        // "Shadow"/effect connector-style gallery stores its shadow in effectRef,
+        // not in spPr; without this fallback PowerPoint draws the shadow but the
+        // preview dropped it. Explicit spPr effects still win.
+        if (cxnEffectList == null && part != null)
+            cxnEffectList = ResolveStyleEffectRefList(style, part);
         var cxnFilterParts = new List<string>();
         var cxnShadowCss = EffectListToShadowCss(cxnEffectList, themeColors);
         if (!string.IsNullOrEmpty(cxnShadowCss) && !cxnShadowCss.StartsWith("box-shadow:"))

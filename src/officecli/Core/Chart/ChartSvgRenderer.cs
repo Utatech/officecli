@@ -197,7 +197,8 @@ internal partial class ChartSvgRenderer
         bool isReversed = false, List<Dictionary<int, string>>? perPointColors = null,
         int? catLabelRotationDeg = null, int? valLabelRotationDeg = null,
         List<TrendlineInfo?>? trendlines = null,
-        bool showSerName = false, bool showCatName = false, bool showVal = true)
+        bool showSerName = false, bool showCatName = false, bool showVal = true,
+        double? logBase = null)
     {
         // Per-data-point fill override (c:dPt): for series s, category idx c,
         // return the explicit dPt color when present, else the per-series color.
@@ -335,6 +336,28 @@ internal partial class ChartSvgRenderer
         }
         else { niceMax = 100; nTicks = 5; tickStep = 20; }
 
+        // Logarithmic value axis (<c:valAx><c:scaling><c:logBase>). Mirrors the
+        // line renderer's isLog branch: only meaningful for non-stacked,
+        // all-positive data (log of a non-positive value is undefined, and
+        // PowerPoint forces a linear axis for stacked/percent/waterfall). The
+        // axis spans whole decades; niceMin/niceMax become the decade floor/
+        // ceiling VALUES (so reference-line/zero-baseline guards keep working)
+        // while ValFrac maps log(v) evenly across [logMinExp, logMaxExp].
+        bool isLog = logBase.HasValue && logBase.Value > 1
+                     && !percentStacked && !stacked && !isWaterfall
+                     && allValues.All(v => v > 0);
+        double logB = logBase ?? 10, logMinExp = 0, logMaxExp = 1;
+        if (isLog)
+        {
+            logMinExp = Math.Floor(Math.Log(allValues.Min()) / Math.Log(logB));
+            logMaxExp = Math.Ceiling(Math.Log(allValues.Max()) / Math.Log(logB));
+            if (logMinExp >= logMaxExp) logMaxExp = logMinExp + 1;
+            nTicks = (int)(logMaxExp - logMinExp);
+            tickStep = 1;
+            niceMin = Math.Pow(logB, logMinExp);
+            niceMax = Math.Pow(logB, logMaxExp);
+        }
+
         // Span and zero-position helpers. span is the full axis range; a value
         // maps to a fraction of the plot along the value axis, with zero sitting
         // at zeroFrac of the way from the axis floor. For all-positive data
@@ -342,6 +365,23 @@ internal partial class ChartSvgRenderer
         var span = niceMax - niceMin;
         if (span <= 0) span = 1;
         var zeroFrac = (0 - niceMin) / span;
+
+        // Value→[0,1] fraction along the value axis from the axis floor. Linear:
+        // proportional to (v − niceMin). Log: proportional to log(v) between the
+        // decade floor/ceiling exponents (non-positive values clamp to the
+        // floor). The grouped bar/column rects derive their length from the
+        // difference of two ValFrac-based endpoints, so log spacing flows through
+        // automatically; in linear mode that difference is algebraically
+        // identical to the old |val|/span·extent so unreversed output is unchanged.
+        double ValFrac(double v)
+        {
+            if (isLog)
+            {
+                var lv = v > 0 ? Math.Log(v) / Math.Log(logB) : logMinExp;
+                return Math.Max(0, Math.Min(1, (lv - logMinExp) / (logMaxExp - logMinExp)));
+            }
+            return (v - niceMin) / span;
+        }
 
         if (horizontal)
         {
@@ -380,7 +420,7 @@ internal partial class ChartSvgRenderer
             // byte-identical to the prior inline `plotOx + ((v-niceMin)/span)*plotPw`.
             double ValToX(double v)
             {
-                var frac = (v - niceMin) / span;
+                var frac = ValFrac(v);
                 return isReversed ? plotOx + plotPw - frac * plotPw : plotOx + frac * plotPw;
             }
             // Zero-baseline X coordinate within the plot (== plotOx when niceMin==0).
@@ -463,10 +503,12 @@ internal partial class ChartSvgRenderer
                         // Draw from the zero baseline: positive extends right, negative
                         // extends left. Always emit a non-negative width using the
                         // absolute magnitude (a negative width would clip to zero).
-                        var barW = Math.Abs(val) / span * plotPw;
-                        // Bar spans from the zero baseline to the value. Left edge is the
-                        // smaller X of the two endpoints. Reversed flips which end that is.
+                        // Bar spans from the zero baseline (or, on a log axis, the
+                        // decade floor) to the value; length is the gap between the
+                        // two mapped endpoints. Linear: identical to |val|/span·plotPw.
                         var valX = ValToX(val);
+                        var barW = Math.Abs(valX - plotZeroX);
+                        // Left edge is the smaller X of the two endpoints. Reversed flips which end that is.
                         var bx = Math.Min(plotZeroX, valX);
                         var by = oy + c * groupH + gap + (serCount - 1 - s) * pitchH;
                         sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" {BarFillAttrs(s, dataIdx, val)} opacity=\"{FillOpacity(s)}\"/>");
@@ -571,7 +613,7 @@ internal partial class ChartSvgRenderer
             if (ValAxisVisible)
             for (int t = 0; t <= nTicks; t++)
             {
-                var val = niceMin + tickStep * t;
+                var val = isLog ? Math.Pow(logB, logMinExp + t) : niceMin + tickStep * t;
                 if (val > niceMax + 1e-9) continue; // BUG1(R25): no label past axisMax
                 var label = percentStacked ? $"{(int)val}%" : FmtValAxis(val, valNumFmt);
                 var tx = TickX((double)t / nTicks);
@@ -618,7 +660,7 @@ internal partial class ChartSvgRenderer
             // inline `oy + ph - ((v-niceMin)/span)*ph`, so unreversed output is unchanged.
             double ValToY(double v)
             {
-                var frac = (v - niceMin) / span;
+                var frac = ValFrac(v);
                 return isReversed ? oy + frac * ph : oy + ph - frac * ph;
             }
             // Tick fraction → Y. Reversed flips so tick 0 sits at the top.
@@ -738,12 +780,15 @@ internal partial class ChartSvgRenderer
                         // Draw from the zero baseline: positive extends up, negative
                         // extends down. Always emit a non-negative height using the
                         // absolute magnitude (a negative height would clip to zero).
-                        var bh = Math.Abs(val) / span * ph;
                         var bx = ox + c * groupW + gap + s * pitchW;
-                        // Bar spans from the zero baseline to the value. Top edge is the
-                        // smaller Y of the two endpoints; reversed flips which end that is
-                        // (with maxMin the baseline is at the TOP so bars grow downward).
+                        // Bar spans from the zero baseline (or, on a log axis, the
+                        // decade floor) to the value; height is the gap between the
+                        // two mapped endpoints. Linear: identical to |val|/span·ph.
+                        // Top edge is the smaller Y of the two endpoints; reversed flips
+                        // which end that is (with maxMin the baseline is at the TOP so
+                        // bars grow downward).
                         var valY = ValToY(val);
+                        var bh = Math.Abs(valY - plotZeroY);
                         var by = Math.Min(plotZeroY, valY);
                         sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{bh:0.#}\" {BarFillAttrs(s, c, val)} opacity=\"{FillOpacity(s)}\"/>");
                         if (showDataLabels)
@@ -851,7 +896,7 @@ internal partial class ChartSvgRenderer
             if (ValAxisVisible)
             for (int t = 0; t <= nTicks; t++)
             {
-                var val = niceMin + tickStep * t;
+                var val = isLog ? Math.Pow(logB, logMinExp + t) : niceMin + tickStep * t;
                 // BUG1(R25): with an explicit axisMin/max/majorUnit the final
                 // tick can land above axisMax (e.g. 450 > 400); real PowerPoint
                 // omits any label past the axis top. Skip it.
@@ -4285,7 +4330,7 @@ internal partial class ChartSvgRenderer
                     info.DataLabelsNumFmt, info.Overlap, info.IsReversed, info.PerPointColors,
                     info.CatAxisLabelRotationDeg, info.ValAxisLabelRotationDeg, info.Trendlines,
                     info.ShowDataLabelSerName, info.ShowDataLabelCatName,
-                    info.ShowDataLabelVal || info.ShowDataLabelPercent);
+                    info.ShowDataLabelVal || info.ShowDataLabelPercent, info.LogBase);
         }
 
         // Plot-area border (<c:plotArea><c:spPr><a:ln>). Drawn AFTER the plot

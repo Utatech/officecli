@@ -994,6 +994,13 @@ internal partial class ChartSvgRenderer
         Func<double, double> mapXVal, Func<double, double> mapY, string lineColor, double fallbackLabelX, double fallbackLabelY)
     {
         if (xData.Length < 2) return;
+        // An explicit trendline color (tl.Color, from <c:trendline><c:spPr><a:ln>)
+        // arrives as raw OOXML hex with no '#'; emitting stroke="FF0000" is an
+        // invalid SVG paint so the curve renders as stroke:none (invisible). The
+        // series-color fallback is already '#'-prefixed. CssHexColor is idempotent
+        // on '#'-prefixed input, so route both through it. (Affects every chart
+        // type's explicit-color trendline, not just area.)
+        lineColor = CssHexColor(lineColor);
         var dashArr = tl.Dash != "solid" ? $" stroke-dasharray=\"{RefLineDashArray(tl.Dash)}\"" : "";
 
         Func<double, double>? trendFn = null;
@@ -1864,7 +1871,7 @@ internal partial class ChartSvgRenderer
         bool showDataLabels = false, bool showVal = true, bool showSerName = false,
         bool showCatName = false, string? dataLabelNumFmt = null,
         int? catLabelRotationDeg = null, int? valLabelRotationDeg = null,
-        bool isReversed = false)
+        bool isReversed = false, List<TrendlineInfo?>? trendlines = null)
     {
         if (series.Count == 0) return;
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
@@ -2054,6 +2061,27 @@ internal partial class ChartSvgRenderer
                 if (showVal) lparts.Add(valuePart);
                 var vlabel = string.Join(", ", lparts);
                 sb.AppendLine($"        <text class=\"chart-data-label\" x=\"{px:0.#}\" y=\"{py - 6:0.#}\" fill=\"{ValueColor}\" font-size=\"{DataLabelFontPx}\" text-anchor=\"middle\">{HtmlEncode(vlabel)}</text>");
+            }
+
+        // Trendlines (parity with bar/line; area previously dropped them — it had
+        // no `trendlines` parameter, so a <c:trendline> on an area series was
+        // extracted into ChartInfo.Trendlines and then silently discarded. Real
+        // PowerPoint overlays the fitted curve on the area fills). Each series is
+        // regressed over its 1-based category index; tlMapX converts that index
+        // back to the vertex pixel, matching the line renderer.
+        if (trendlines != null)
+            for (int s = 0; s < series.Count; s++)
+            {
+                var tl = s < trendlines.Count ? trendlines[s] : null;
+                if (tl == null) continue;
+                var vals = series[s].values;
+                if (vals.Length < 2) continue;
+                var lineColor = tl.Color ?? colors[s % colors.Count];
+                var xData = new double[vals.Length];
+                var yData = new double[vals.Length];
+                for (int i = 0; i < vals.Length; i++) { xData[i] = i + 1; yData[i] = vals[i]; }
+                Func<double, double> tlMapX = xv => ox + (catCount > 1 ? pw * (xv - 1) / (catCount - 1) : pw / 2.0);
+                AppendTrendline(sb, tl, xData, yData, tlMapX, DataToY, lineColor, ox + pw, oy + 12);
             }
     }
 
@@ -4243,7 +4271,7 @@ internal partial class ChartSvgRenderer
                     info.ShowDataLabels, info.ShowDataLabelVal, info.ShowDataLabelSerName,
                     info.ShowDataLabelCatName, info.DataLabelsNumFmt,
                     info.CatAxisLabelRotationDeg, info.ValAxisLabelRotationDeg,
-                    info.IsReversed);
+                    info.IsReversed, info.Trendlines);
         }
         else if (chartType == "combo")
         {

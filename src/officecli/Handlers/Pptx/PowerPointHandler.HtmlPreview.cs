@@ -541,25 +541,25 @@ public partial class PowerPointHandler
             var dataUri = BlipToDataUri(blipFill, part);
             if (dataUri != null)
             {
-                // R4-4: honor <a:tile> — repeat at native size rather than cover.
-                var css = blipFill.GetFirstChild<Drawing.Tile>() != null
-                    ? $"background:url('{dataUri}') repeat;background-size:auto;"
-                    : $"background:url('{dataUri}') center/cover no-repeat;";
-                // R59-5: surface <a:alphaModFix amt="..."/> as CSS opacity so
-                // the HTML preview matches PowerPoint's faded image bg render.
-                // amt is 0..100000 (100000 = opaque). Skip when opaque/default
-                // to keep the emitted CSS minimal.
+                // <a:alphaModFix amt="..."/>: PowerPoint composites the background
+                // image at this alpha over the slide's (white) base — fading ONLY the
+                // background. amt is 0..100000 (100000 = opaque). Emitting `opacity` on
+                // the slide div faded EVERY shape/text on the slide (CSS opacity applies
+                // to the whole subtree). Reproduce the blend with a translucent-white
+                // overlay layer painted over the image: (1-alpha) white over the image ==
+                // alpha*image + (1-alpha)*white, exactly PowerPoint's compositing, while
+                // leaving all shapes fully opaque. (.slide's base is white.)
                 var alphaMod = blipFill.GetFirstChild<Drawing.Blip>()?.GetFirstChild<Drawing.AlphaModulationFixed>();
-                if (alphaMod?.Amount?.HasValue == true)
+                var overlay = "";
+                if (alphaMod?.Amount?.HasValue == true && alphaMod.Amount.Value < 100000)
                 {
-                    var amt = alphaMod.Amount.Value;
-                    if (amt < 100000)
-                    {
-                        var opacity = amt / 100000.0;
-                        css += $"opacity:{opacity:0.##};";
-                    }
+                    var ov = 1.0 - alphaMod.Amount.Value / 100000.0;
+                    overlay = $"linear-gradient(rgba(255,255,255,{ov:0.##}),rgba(255,255,255,{ov:0.##})),";
                 }
-                return css;
+                // R4-4: honor <a:tile> — repeat at native size rather than cover.
+                return blipFill.GetFirstChild<Drawing.Tile>() != null
+                    ? $"background:{overlay}url('{dataUri}') repeat;background-size:auto;"
+                    : $"background:{overlay}url('{dataUri}') center/cover no-repeat;";
             }
         }
 

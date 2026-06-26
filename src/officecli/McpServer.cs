@@ -1,9 +1,11 @@
 // Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
 // SPDX-License-Identifier: Apache-2.0
 
+using System.CommandLine;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OfficeCli.Core;
 using OfficeCli.Handlers;
 
@@ -20,6 +22,17 @@ public static class McpServer
     {
         using var reader = new StreamReader(Console.OpenStandardInput());
         using var writer = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+
+        // MCP is non-resident by design: every command opens, applies, and
+        // eager-saves directly (the inline handlers always called Open(), never
+        // TryResident). When a command is dispatched through the shared CLI root
+        // (RunCli), the CLI handlers DO call TryResident — and with no resident
+        // running that auto-spawns a subprocess, which blocks this single
+        // long-lived stdio process. Default the opt-out on so shared-grammar
+        // dispatch stays non-resident, matching the legacy MCP behaviour. An
+        // explicit user value (e.g. to opt INTO residents) is respected.
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OFFICECLI_NO_AUTO_RESIDENT")))
+            Environment.SetEnvironmentVariable("OFFICECLI_NO_AUTO_RESIDENT", "1");
 
         // MCP server is a long-lived stdio process. The normal
         // per-invocation auto-upgrade path (Program.cs:112) is
@@ -470,6 +483,73 @@ public static class McpServer
         return pages.HasValue ? $"Pages: {pages}\n" + stats : stats;
     }
 
+    // ====================================================================
+    // Shared-grammar dispatch (Phase 1 of routing MCP through the CLI's one
+    // System.CommandLine root). Translating the MCP JSON into the CLI token
+    // vector and parsing it with the SAME root the CLI uses means argument
+    // validation, business logic, and the {success,data} envelope are shared
+    // by construction — not re-marshalled (and re-bugged) by hand here.
+    // ====================================================================
+    private static RootCommand? _rootCommand;
+    private static RootCommand RootCommand => _rootCommand ??= CommandBuilder.BuildRootCommand();
+
+    /// <summary>
+    /// Parse+invoke argv through the shared CLI root, capturing stdout.
+    /// Parse/validation failures (the free win — same messages the CLI gives)
+    /// throw before any handler runs. argv is the CLI token vector, e.g.
+    /// ["get", file, "/body", "--depth", "1", "--json"].
+    /// </summary>
+    private static string RunCli(params string[] argv)
+    {
+        var pr = RootCommand.Parse(argv);
+        if (pr.Errors.Count > 0)
+            throw new ArgumentException(string.Join("; ", pr.Errors.Select(e => e.Message)));
+        var prevOut = Console.Out;
+        var sw = new System.IO.StringWriter();
+        try { Console.SetOut(sw); pr.Invoke(); }
+        finally { Console.SetOut(prevOut); }
+        return sw.ToString();
+    }
+
+    /// <summary>
+    /// Run a --json CLI command and return its `data` payload, unwrapped from
+    /// the {success,data} envelope so the MCP response keeps its existing bare
+    /// shape. A success:false envelope throws → MCP isError.
+    /// </summary>
+    private static string RunCliJsonData(params string[] argv)
+    {
+        var outText = RunCli(argv).Trim();
+        JsonNode? env;
+        try { env = JsonNode.Parse(outText); }
+        catch { return outText; }
+        if (env is JsonObject obj)
+        {
+            if (obj.TryGetPropertyValue("success", out var s) && s is not null && !s.GetValue<bool>())
+                throw new ArgumentException(ExtractEnvelopeError(obj));
+            if (obj.TryGetPropertyValue("data", out var data) && data is not null)
+                return data.ToJsonString(OutputFormatter.PublicJsonOptions);
+        }
+        return outText;
+    }
+
+    /// <summary>
+    /// Pull the human-readable message out of a failure envelope. Two shapes
+    /// exist: WrapEnvelopeError → {message:"..."} and WrapErrorEnvelope →
+    /// {error:{error:"...", code:"..."}}. Return the inner string, never the
+    /// whole object.
+    /// </summary>
+    private static string ExtractEnvelopeError(JsonObject obj)
+    {
+        if (obj.TryGetPropertyValue("message", out var m) && m is JsonValue) return m.ToString();
+        if (obj.TryGetPropertyValue("error", out var er))
+        {
+            if (er is JsonObject eo && eo.TryGetPropertyValue("error", out var inner) && inner is not null)
+                return inner.ToString();
+            if (er is JsonValue) return er.ToString();
+        }
+        return "Command failed.";
+    }
+
     private static string ExecuteTool(string name, JsonElement args)
     {
         string Arg(string key) => args.ValueKind == JsonValueKind.Object && args.TryGetProperty(key, out var v) ? v.GetString() ?? "" : "";
@@ -523,28 +603,17 @@ public static class McpServer
             }
             case "get":
             {
-                var file = Arg("file");
+                // Phase 1: routed through the shared CLI root. argv mirrors
+                // `officecli get <file> <path> --depth N [--save dest] --json`.
+                // Validation (required file/path), the resident hop, binary
+                // extraction, and the {success,data} envelope all come from the
+                // one CLI implementation; we unwrap `data` to keep the MCP
+                // response's existing bare {matches,results} shape.
                 var path = Arg("path"); if (string.IsNullOrEmpty(path)) path = "/";
-                var depth = ArgInt("depth", 1);
-                using var handler = DocumentHandlerFactory.Open(file);
-                var node = handler.Get(path, depth);
-                // save=<dest>: extract the binary payload backing an ole /
-                // picture / media / embedded node to a file. Calls the shared
-                // handler.TryExtractBinary the CLI and resident get use — only
-                // this thin wrapper is per-surface. CONSISTENCY(get-save):
-                // mirrors CommandBuilder.GetQuery.cs / ResidentServer.ExecuteGet.
+                var argv = new List<string> { "get", Arg("file"), path, "--depth", ArgInt("depth", 1).ToString(), "--json" };
                 var savePath = Arg("save");
-                if (!string.IsNullOrEmpty(savePath))
-                {
-                    if (!handler.TryExtractBinary(path, savePath, out var contentType, out var byteCount))
-                        throw new ArgumentException($"Node at '{path}' has no binary payload to extract (only ole/picture/media/embedded nodes can be saved).");
-                    node.Format["savedTo"] = savePath;
-                    node.Format["savedBytes"] = byteCount;
-                    if (contentType != null) node.Format["savedContentType"] = contentType;
-                }
-                // Unified envelope: single-path get returns the same
-                // {matches, results: [...]} shape as query / get selected.
-                return OutputFormatter.FormatNodes(new List<DocumentNode> { node }, OutputFormat.Json);
+                if (!string.IsNullOrEmpty(savePath)) { argv.Add("--save"); argv.Add(savePath); }
+                return RunCliJsonData(argv.ToArray());
             }
             case "query":
             {

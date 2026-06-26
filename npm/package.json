@@ -26,6 +26,10 @@
   "bin": {
     "officecli": "officecli.js"
   },
+  "main": "lib/install-binary.js",
+  "exports": {
+    ".": "./lib/install-binary.js"
+  },
   "scripts": {
     "postinstall": "node install.js"
   },

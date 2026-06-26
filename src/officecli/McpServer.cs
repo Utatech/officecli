@@ -506,6 +506,20 @@ public static class McpServer
                 var depth = ArgInt("depth", 1);
                 using var handler = DocumentHandlerFactory.Open(file);
                 var node = handler.Get(path, depth);
+                // save=<dest>: extract the binary payload backing an ole /
+                // picture / media / embedded node to a file. Calls the shared
+                // handler.TryExtractBinary the CLI and resident get use — only
+                // this thin wrapper is per-surface. CONSISTENCY(get-save):
+                // mirrors CommandBuilder.GetQuery.cs / ResidentServer.ExecuteGet.
+                var savePath = Arg("save");
+                if (!string.IsNullOrEmpty(savePath))
+                {
+                    if (!handler.TryExtractBinary(path, savePath, out var contentType, out var byteCount))
+                        throw new ArgumentException($"Node at '{path}' has no binary payload to extract (only ole/picture/media/embedded nodes can be saved).");
+                    node.Format["savedTo"] = savePath;
+                    node.Format["savedBytes"] = byteCount;
+                    if (contentType != null) node.Format["savedContentType"] = contentType;
+                }
                 // Unified envelope: single-path get returns the same
                 // {matches, results: [...]} shape as query / get selected.
                 return OutputFormatter.FormatNodes(new List<DocumentNode> { node }, OutputFormat.Json);
@@ -823,6 +837,8 @@ Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=val
         w.WriteStartObject("grid"); w.WriteString("type", "number"); w.WriteString("description", "Tile pages/slides into a thumbnail contact sheet (screenshot mode, pptx + docx). N = column count; -1 = auto (pick columns to keep the sheet roughly square); 0 = off."); w.WriteEndObject();
         // depth
         w.WriteStartObject("depth"); w.WriteString("type", "number"); w.WriteString("description", "Child depth for get (default 1)"); w.WriteEndObject();
+        // save (get: extract a node's binary payload to a file)
+        w.WriteStartObject("save"); w.WriteString("type", "string"); w.WriteString("description", "For get: destination path to extract the node's binary payload (ole/picture/media/embedded only); response Format gets savedTo/savedBytes/savedContentType"); w.WriteEndObject();
         // index
         w.WriteStartObject("index"); w.WriteString("type", "number"); w.WriteString("description", "Insert position (0-based) for add/move"); w.WriteEndObject();
         // to

@@ -429,7 +429,7 @@ public partial class WordHandler
         // element paths (/section[N], /body/sectPr[N], /chart[N], /toc[N], …) match
         // case-insensitively so /Section[1] is equivalent to /section[1]. styleSetMatch
         // below remains case-sensitive — style ids are user-defined identifiers.
-        var secSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^(?:/section\[(\d+)\]|/body/sectPr(?:\[(\d+)\])?)$",
+        var secSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^(?:/section\[(\d+|last\(\))\]|/body/sectPr(?:\[(\d+)\])?)$",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (secSetMatch.Success) return SetSectionPath(secSetMatch, properties);
 

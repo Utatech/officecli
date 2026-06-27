@@ -379,7 +379,7 @@ Your first workbook is almost never correct. Treat QA as a bug hunt, not a confi
    officecli query "$FILE" 'cell:contains("#NAME?")'
    officecli query "$FILE" 'cell:contains("#N/A")'
    ```
-4. `officecli validate "$FILE"` — close any resident first (see Known Issues).
+4. `officecli validate "$FILE"` — safe with a resident open; `validate` flushes pending edits to disk itself.
 5. **Visual pass — walk every sheet via the HTML preview.** Run `officecli view "$FILE" html` and Read the returned HTML path. Each sheet renders with charts inline. Scan for `###`, truncated titles, placeholder tokens (`$fy$24`, `{var}`, `<TODO>`), sliced charts, white-slice pie charts, empty chart anchors — **STOP and fix before declaring done**. "validate pass" is not delivery; "the preview looks like a real workbook" is delivery. For human preview, run `officecli watch "$FILE"` (user opens the live preview at their own discretion) or have them open the `.xlsx` directly in Excel / WPS / Numbers.
 6. **Print layout fix (wide tables / multi-chart sheets).** When a sheet holds a chart or a wide table and the user will print it, set per-sheet page layout so it fits on one page:
    ```bash
@@ -441,7 +441,6 @@ EOF
 CLI constraints and gaps to work around — not defects in the output file.
 
 - **Chart series are immutable after create** — to add/change a series: `remove` + `add` with the full series list. (Position is mutable: `set chart[N] --prop anchor=` / `x/y/width/height`.) `remove chart[N]` shifts subsequent indices down; re-add appends at end.
-- **`validate` while resident open** — reports spurious `tableParts` / `drawing` errors. Always `close` first.
 - **Batch + resident for formulas — avoid.** Observed deadlocks (CPU 99%, `main pipe busy`, kill -9 required) for cross-sheet formula batches even at 3-5 ops; the prior "≤ 12 ops safe" guideline is **not reliable**. Rule: **cross-sheet formulas go through non-resident one-big-batch OR individual `set`** (100% reliable). Pure value-set batches (no formulas) stay reliable at 50-80+ ops even in resident. **Multiple officecli resident processes on the same machine also contend** — if another agent/session is running resident, expect non-deterministic hangs.
 - **Conditional formatting naming asymmetry** — the element name for `--type` is `conditionalformatting`; the path suffix is `/cf[N]`. Use `officecli help xlsx conditionalformatting` for schema, `/cf[N]` for paths.
 - **Sheet `position` prop on add** — help says Add processes `position`, but the prop is often ignored. Reorder with `officecli move --index` / `--after` / `--before` after creating the sheet.

@@ -300,7 +300,7 @@ officecli set report.docx /body/p[1]/r[1] --prop bold=true
 officecli set report.docx /body/p[2]/r[1] --prop color=FF0000
 officecli close report.docx
 
-# Batch mode — atomic multi-command execution (stops on first error by default)
+# Batch mode — multi-command execution (continues on error by default; --stop-on-error to abort)
 echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
       {"command":"set","path":"/slide[1]/shape[2]","props":{"fill":"FF0000"}}]' \
   | officecli batch deck.pptx --json
@@ -308,8 +308,8 @@ echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
 # Inline batch with --commands (no stdin needed)
 officecli batch deck.pptx --commands '[{"op":"set","path":"/slide[1]/shape[1]","props":{"text":"Hi"}}]'
 
-# Use --force to continue past errors
-officecli batch deck.pptx --input updates.json --force --json
+# Abort on the first failing command (default is continue-on-error)
+officecli batch deck.pptx --input updates.json --stop-on-error --json
 ```
 
 > **Reading the file with another tool? Flush to disk first.**

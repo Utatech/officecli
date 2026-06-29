@@ -17,6 +17,23 @@ internal static class AttributeFilter
 
     public record Condition(string Key, FilterOp Op, string Value);
 
+    /// <summary>
+    /// A query diagnostic carrying both a human-readable <see cref="Message"/> (the
+    /// only field surfaced on the text/stderr path, unchanged) and machine-readable
+    /// correction fields for the `query --json` contract: <see cref="Kind"/> routes
+    /// the failure (unknown_key / value_no_match / non_numeric), and
+    /// <see cref="Available"/> + <see cref="Suggestion"/> let an agent self-correct
+    /// without parsing the prose. Non-empty-path warnings carry Message only.
+    /// </summary>
+    public record FilterDiagnostic(
+        string Message,
+        string Code = "filter_warning",
+        string? Kind = null,
+        string? Key = null,
+        string? Value = null,
+        string[]? Available = null,
+        string? Suggestion = null);
+
     // Regex: [key op value] where op is ~=, >=, <=, !=, =, >, or <.
     // The leading '@' is an optional XPath-style attribute prefix accepted
     // for round-trip parity with Get/Add output (e.g. `/slide[1]/shape[@id=10000]`
@@ -177,10 +194,10 @@ internal static class AttributeFilter
         return conditions.Select(c => new Condition(keyResolver(c.Key), c.Op, c.Value)).ToList();
     }
 
-    public static (List<DocumentNode> Results, List<string> Warnings) ApplyWithWarnings(
+    public static (List<DocumentNode> Results, List<FilterDiagnostic> Warnings) ApplyWithWarnings(
         List<DocumentNode> nodes, List<Condition> conditions, bool applyAll = true)
     {
-        var warnings = new List<string>();
+        var warnings = new List<FilterDiagnostic>();
         if (conditions.Count == 0) return (nodes, warnings);
 
         var toApply = applyAll
@@ -196,7 +213,10 @@ internal static class AttributeFilter
             bool anyHasKey = nodes.Any(n => ResolveValue(n, cond.Key).HasKey);
             if (!anyHasKey && nodes.Count > 0)
             {
-                warnings.Add($"Warning: unknown key '{cond.Key}'. Available: {string.Join(", ", GetAllFormatKeys(nodes))}");
+                var keys = GetAllFormatKeys(nodes).ToArray();
+                warnings.Add(new FilterDiagnostic(
+                    $"Warning: unknown key '{cond.Key}'. Available: {string.Join(", ", keys)}",
+                    Kind: "unknown_key", Key: cond.Key, Available: keys));
             }
         }
 
@@ -205,7 +225,9 @@ internal static class AttributeFilter
         {
             if (ExtractNumber(cond.Value) == null && !EmuConverter.TryParseEmu(cond.Value, out _))
             {
-                warnings.Add($"Warning: non-numeric '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}]");
+                warnings.Add(new FilterDiagnostic(
+                    $"Warning: non-numeric '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}]",
+                    Kind: "non_numeric", Key: cond.Key, Value: cond.Value));
             }
             // Also check actual values in nodes
             foreach (var node in nodes)
@@ -213,7 +235,9 @@ internal static class AttributeFilter
                 var (hasKey, actual) = ResolveValue(node, cond.Key);
                 if (hasKey && ExtractNumber(actual) == null && !EmuConverter.TryParseEmu(actual, out _))
                 {
-                    warnings.Add($"Warning: non-numeric '{actual}' for '{cond.Key}' at {node.Path}");
+                    warnings.Add(new FilterDiagnostic(
+                        $"Warning: non-numeric '{actual}' for '{cond.Key}' at {node.Path}",
+                        Kind: "non_numeric", Key: cond.Key, Value: actual));
                     break; // one warning per condition is enough
                 }
             }
@@ -259,9 +283,9 @@ internal static class AttributeFilter
     /// flagged. Mirrors the per-leaf warnings of ApplyWithWarnings but never goes
     /// silent just because an `=` / `!=` pre-filter emptied the candidate set.
     /// </summary>
-    private static List<string> DiagnoseEmptyResult(List<DocumentNode> candidates, List<Condition> conditions)
+    private static List<FilterDiagnostic> DiagnoseEmptyResult(List<DocumentNode> candidates, List<Condition> conditions)
     {
-        var warnings = new List<string>();
+        var diags = new List<FilterDiagnostic>();
         foreach (var cond in conditions)
         {
             if (cond.Op == FilterOp.Exists) continue;
@@ -274,7 +298,8 @@ internal static class AttributeFilter
                 var near = NearestMatch(cond.Key, keys, matchKeySegment: true);
                 var msg = $"Warning: unknown key '{cond.Key}'. Available: {string.Join(", ", keys)}";
                 if (near != null) msg += $" (did you mean '{near}'?)";
-                warnings.Add(msg);
+                diags.Add(new FilterDiagnostic(msg, Kind: "unknown_key", Key: cond.Key,
+                    Available: keys.ToArray(), Suggestion: near));
                 continue;
             }
 
@@ -282,7 +307,9 @@ internal static class AttributeFilter
             if (cond.Op is FilterOp.GreaterOrEqual or FilterOp.LessOrEqual or FilterOp.GreaterThan or FilterOp.LessThan
                 && ExtractNumber(cond.Value) == null && !EmuConverter.TryParseEmu(cond.Value, out _))
             {
-                warnings.Add($"Warning: non-numeric '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}]");
+                diags.Add(new FilterDiagnostic(
+                    $"Warning: non-numeric '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}]",
+                    Kind: "non_numeric", Key: cond.Key, Value: cond.Value));
                 continue;
             }
 
@@ -308,11 +335,14 @@ internal static class AttributeFilter
                     if (values.Count > cap) shown += $", … (+{values.Count - cap} more)";
                     var msg = $"Warning: no match for {cond.Key}='{cond.Value}'. Available: {shown}";
                     if (near != null) msg += $" (did you mean '{near}'?)";
-                    warnings.Add(msg);
+                    // Available is capped independently of the message: bound the JSON
+                    // payload while still giving an agent a usable enumeration.
+                    diags.Add(new FilterDiagnostic(msg, Kind: "value_no_match", Key: cond.Key, Value: cond.Value,
+                        Available: values.Take(50).ToArray(), Suggestion: near));
                 }
             }
         }
-        return warnings;
+        return diags;
     }
 
     /// <summary>
@@ -762,10 +792,10 @@ internal static class AttributeFilter
     /// ApplyWithWarnings emits (missing key, non-numeric comparison value) by
     /// walking the predicate leaves.
     /// </summary>
-    public static (List<DocumentNode> Results, List<string> Warnings) ApplyExprWithWarnings(
+    public static (List<DocumentNode> Results, List<FilterDiagnostic> Warnings) ApplyExprWithWarnings(
         List<DocumentNode> nodes, FilterExpr? expr)
     {
-        var warnings = new List<string>();
+        var warnings = new List<FilterDiagnostic>();
         if (expr == null) return (nodes, warnings);
 
         foreach (var cond in LeafConditions(expr))
@@ -774,11 +804,18 @@ internal static class AttributeFilter
             {
                 bool anyHasKey = nodes.Any(n => ResolveValue(n, cond.Key).HasKey);
                 if (!anyHasKey && nodes.Count > 0)
-                    warnings.Add($"Warning: unknown key '{cond.Key}'. Available: {string.Join(", ", GetAllFormatKeys(nodes))}");
+                {
+                    var keys = GetAllFormatKeys(nodes).ToArray();
+                    warnings.Add(new FilterDiagnostic(
+                        $"Warning: unknown key '{cond.Key}'. Available: {string.Join(", ", keys)}",
+                        Kind: "unknown_key", Key: cond.Key, Available: keys));
+                }
             }
             if (cond.Op is FilterOp.GreaterOrEqual or FilterOp.LessOrEqual or FilterOp.GreaterThan or FilterOp.LessThan
                 && ExtractNumber(cond.Value) == null && !EmuConverter.TryParseEmu(cond.Value, out _))
-                warnings.Add($"Warning: non-numeric '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}]");
+                warnings.Add(new FilterDiagnostic(
+                    $"Warning: non-numeric '{cond.Value}' in [{cond.Key}{OpToString(cond.Op)}{cond.Value}]",
+                    Kind: "non_numeric", Key: cond.Key, Value: cond.Value));
         }
 
         var results = nodes.Where(n => MatchesExpr(n, expr)).ToList();
@@ -811,7 +848,7 @@ internal static class AttributeFilter
     /// always applies all conditions: stripping the bracket means the handler did
     /// not pre-filter, so the tree must evaluate every predicate itself.
     /// </param>
-    public static (List<DocumentNode> Results, List<string> Warnings) FilterSelector(
+    public static (List<DocumentNode> Results, List<FilterDiagnostic> Warnings) FilterSelector(
         string selector, Func<string, List<DocumentNode>> query, Func<string, string>? keyResolver = null,
         bool applyAll = true)
     {
@@ -820,7 +857,7 @@ internal static class AttributeFilter
             expr = NormalizeKeysExpr(expr, keyResolver);
 
         List<DocumentNode> results;
-        List<string> warnings;
+        List<FilterDiagnostic> warnings;
         List<Condition> leafConds;
 
         if (TryFlatten(expr) is { } flat)

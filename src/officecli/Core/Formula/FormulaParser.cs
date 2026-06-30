@@ -1838,6 +1838,24 @@ internal static class FormulaParser
                 };
                 var naryProps = new M.NaryProperties(new M.AccentChar { Val = naryChar });
 
+                // A \limits / \nolimits keyword may follow an n-ary operator to
+                // override script placement. For n-ary operators the bounds are
+                // ALWAYS carried as the operator's own m:sub/m:sup; the keyword
+                // only toggles m:limLoc (under/over vs subSup). \limits → under/
+                // over (limLoc undOvr), \nolimits → subscript/superscript
+                // (limLoc subSup). Either way the bounds stay on the nary and are
+                // never hidden or pushed onto the body. Consume the keyword here
+                // so it is not parsed as the (empty) base operand.
+                if (pos < tokens.Count && tokens[pos].Type == TokenType.Command
+                    && (tokens[pos].Value == "limits" || tokens[pos].Value == "nolimits"))
+                {
+                    var limLoc = tokens[pos].Value == "nolimits"
+                        ? M.LimitLocationValues.SubscriptSuperscript
+                        : M.LimitLocationValues.UnderOver;
+                    naryProps.AppendChild(new M.LimitLocation { Val = limLoc });
+                    pos++;
+                }
+
                 // Parse optional sub and sup limits (they come as _{}^{} after the command)
                 OpenXmlElement? subArg = null;
                 OpenXmlElement? supArg = null;

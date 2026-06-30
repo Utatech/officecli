@@ -106,6 +106,15 @@ internal static class FormulaParser
             FlattenNestedOfficeMath(root);
             return root;
         }
+        catch (FormulaParseException)
+        {
+            // A FormulaParseException thrown from inside the parser (e.g. the
+            // depth guard at ParseGroup) already carries the KaTeX hint.
+            // Re-wrapping it here would append the hint a second time, so let
+            // it propagate unchanged. Only foreign exceptions get the wrap +
+            // hint below.
+            throw;
+        }
         catch (Exception ex)
         {
             throw new FormulaParseException(

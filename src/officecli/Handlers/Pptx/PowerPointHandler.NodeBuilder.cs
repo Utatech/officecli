@@ -570,6 +570,11 @@ public partial class PowerPointHandler
                             var cellFillSolid = tcPr?.GetFirstChild<Drawing.SolidFill>();
                             var cellFillColor = ReadColorFromFill(cellFillSolid);
                             if (cellFillColor != null) cellNode.Format["fill"] = cellFillColor;
+                            // Explicit <a:noFill/> beats the table style's band/
+                            // firstRow fill; dropping it painted the cell with the
+                            // style fill on round-trip (sample18).
+                            else if (tcPr?.GetFirstChild<Drawing.NoFill>() != null)
+                                cellNode.Format["fill"] = "none";
                         }
 
                         // Cell borders (including diagonal tl2br/tr2bl)

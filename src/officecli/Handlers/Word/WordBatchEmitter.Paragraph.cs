@@ -3402,6 +3402,15 @@ public static partial class WordBatchEmitter
 
     private static bool IsTextboxDrawing(string rawXml)
     {
+        // A wpg:wgp GROUP (e.g. a `diagram`, whose node shapes are themselves
+        // textboxes) is NOT a plain textbox. Classifying it as one makes the
+        // textbox-only-paragraph shortcut flatten the whole group down to its
+        // first child textbox, dropping every other node + connector. Let a
+        // group fall through to the general drawing path, which round-trips the
+        // whole <w:drawing> verbatim (raw-set) since a native diagram carries no
+        // external relationship references.
+        if (rawXml.Contains("<wpg:wgp", StringComparison.Ordinal)) return false;
+
         // Mirrors WordHandler.CountTextboxesInHost / Navigation's textbox
         // selector — a textbox is a wps:wsp with txBox=1 cNvSpPr or a
         // wps:txbx child carrying w:txbxContent.

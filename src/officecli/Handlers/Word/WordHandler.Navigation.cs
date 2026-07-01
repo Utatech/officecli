@@ -3522,13 +3522,20 @@ public partial class WordHandler
             // BUG-DUMP-R42-7/8: <w:group/> and <w:picture/> markers identify a
             // grouping / picture content control; without reading them the
             // control was reported (and later rebuilt) as a generic rich-text SDT.
+            var checkBoxEl = sdtProps.GetFirstChild<DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox>();
             if (sdtProps.GetFirstChild<SdtContentGroup>() != null) node.Format["type"] = "group";
             else if (sdtProps.GetFirstChild<SdtContentPicture>() != null) node.Format["type"] = "picture";
+            else if (checkBoxEl != null) node.Format["type"] = "checkbox";
             else if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) node.Format["type"] = "dropdown";
             else if (sdtProps.GetFirstChild<SdtContentComboBox>() != null) node.Format["type"] = "combobox";
             else if (sdtProps.GetFirstChild<SdtContentDate>() != null) node.Format["type"] = "date";
             else if (sdtProps.GetFirstChild<SdtContentText>() != null) node.Format["type"] = "text";
             else node.Format["type"] = "richtext";
+
+            // Checkbox checked state (w14:checked val 1/0 → bool).
+            if (checkBoxEl != null)
+                node.Format["checked"] = checkBoxEl.Checked?.Val?.InnerText == "1"
+                    || string.Equals(checkBoxEl.Checked?.Val?.InnerText, "true", StringComparison.OrdinalIgnoreCase);
 
             // Read date format for date controls
             var dateContent = sdtProps.GetFirstChild<SdtContentDate>();
@@ -3572,13 +3579,19 @@ public partial class WordHandler
             if (sdtId?.Val?.Value != null) node.Format["id"] = sdtId.Val.Value;
 
             // BUG-DUMP-R42-7/8: surface group / picture content-control markers.
+            var checkBoxElRun = sdtProps.GetFirstChild<DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox>();
             if (sdtProps.GetFirstChild<SdtContentGroup>() != null) node.Format["type"] = "group";
             else if (sdtProps.GetFirstChild<SdtContentPicture>() != null) node.Format["type"] = "picture";
+            else if (checkBoxElRun != null) node.Format["type"] = "checkbox";
             else if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) node.Format["type"] = "dropdown";
             else if (sdtProps.GetFirstChild<SdtContentComboBox>() != null) node.Format["type"] = "combobox";
             else if (sdtProps.GetFirstChild<SdtContentDate>() != null) node.Format["type"] = "date";
             else if (sdtProps.GetFirstChild<SdtContentText>() != null) node.Format["type"] = "text";
             else node.Format["type"] = "richtext";
+
+            if (checkBoxElRun != null)
+                node.Format["checked"] = checkBoxElRun.Checked?.Val?.InnerText == "1"
+                    || string.Equals(checkBoxElRun.Checked?.Val?.InnerText, "true", StringComparison.OrdinalIgnoreCase);
 
             // Read date format for date controls
             var dateContentRun = sdtProps.GetFirstChild<SdtContentDate>();

@@ -1446,6 +1446,12 @@ public partial class WordHandler
         var isDirty = beginChar?.Dirty?.Value == true;
         if (isDirty) node.Format["dirty"] = true;
 
+        // BUG-DUMP-R37-4: <w:fldChar w:fldLock="true"> on the begin fldChar locks
+        // the field against F9/recalc. Surface it on the collapsed complex-field
+        // node so `get /field[N]` reports the locked state (mirrors the fldSimple
+        // branches in Navigation). Only emit when locked.
+        if (beginChar?.FieldLock?.Value == true) node.Format["fldLock"] = true;
+
         // Cross-handler evaluated protocol: true whenever the caller can read
         // some value from the field — i.e. when a cached result run exists.
         // dirty=true (Word will re-render on open) keeps evaluated=true

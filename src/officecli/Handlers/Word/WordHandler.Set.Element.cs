@@ -307,6 +307,24 @@ public partial class WordHandler
                     }
                     else unsupported.Add(key);
                     break;
+                case "decorative":
+                    // Accessibility flag stored as an adec:decorative docPr extension.
+                    // Symmetric with `alt` (both operate on <wp:docPr>).
+                    var drawingDec = run.GetFirstChild<Drawing>();
+                    if (drawingDec != null)
+                    {
+                        var docPropsDec = drawingDec.Descendants<DW.DocProperties>().FirstOrDefault();
+                        if (docPropsDec != null)
+                        {
+                            if (IsTruthy(value)) SetPictureDecorative(docPropsDec);
+                            else docPropsDec.GetFirstChild<A.NonVisualDrawingPropertiesExtensionList>()?
+                                .Elements<A.Extension>()
+                                .Where(e => string.Equals(e.Uri?.Value, DecorativeExtUri, StringComparison.OrdinalIgnoreCase))
+                                .ToList().ForEach(e => e.Remove());
+                        }
+                    }
+                    else unsupported.Add(key);
+                    break;
                 case "width":
                 {
                     var drawingW = run.GetFirstChild<Drawing>();

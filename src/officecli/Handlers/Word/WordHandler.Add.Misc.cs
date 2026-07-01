@@ -2175,11 +2175,11 @@ public partial class WordHandler
             "text", "plaintext", "richtext", "rich",
             "dropdown", "dropdownlist", "combobox", "combo",
             "date", "datepicker",
-            "group", "picture"
+            "group", "picture", "checkbox"
         };
         if (!supportedSdtTypes.Contains(sdtType))
             throw new NotSupportedException(
-                $"SDT type '{sdtType}' is not implemented. Supported: text, richtext, dropdown, combobox, date, group, picture. " +
+                $"SDT type '{sdtType}' is not implemented. Supported: text, richtext, dropdown, combobox, date, group, picture, checkbox. " +
                 "Create the content control in Word, then edit via CLI.");
         var alias = ciProps.GetValueOrDefault("alias", ciProps.GetValueOrDefault("name", ""));
         var tag = ciProps.GetValueOrDefault("tag", "");
@@ -2264,6 +2264,12 @@ public partial class WordHandler
                     // BUG-DUMP-R42-8: picture content control — empty <w:picture/>.
                     sdtProps.AppendChild(new SdtContentPicture());
                     break;
+                case "checkbox":
+                    // Word checkbox content control: a <w14:checkbox> marker in sdtPr
+                    // (checked flag + checked/unchecked box glyphs). The SDK auto-
+                    // declares the w14 namespace on serialization.
+                    sdtProps.AppendChild(BuildSdtCheckBox(IsTruthy(ciProps.GetValueOrDefault("checked", "false"))));
+                    break;
                 case "richtext" or "rich":
                     // Rich text has no specific type element (absence of w:text means rich text)
                     break;
@@ -2276,7 +2282,12 @@ public partial class WordHandler
 
             sdtRun.AppendChild(sdtProps);
             var sdtContent = new SdtContentRun();
-            var contentRun = new Run(new Text(sdtText) { Space = SpaceProcessingModeValues.Preserve });
+            // Checkbox controls carry the box glyph (☒ checked / ☐ unchecked) as
+            // their content run when no explicit text is supplied.
+            var inlineSeedText = sdtType == "checkbox" && string.IsNullOrEmpty(sdtText)
+                ? (IsTruthy(ciProps.GetValueOrDefault("checked", "false")) ? "☒" : "☐")
+                : sdtText;
+            var contentRun = new Run(new Text(inlineSeedText) { Space = SpaceProcessingModeValues.Preserve });
 
             // CONSISTENCY(rtl-cascade): mirror AddRun (Add.Text.cs:373-376).
             // When the host paragraph is direction=rtl (pPr/bidi or mark
@@ -2392,6 +2403,10 @@ public partial class WordHandler
                     // BUG-DUMP-R42-8: picture content control — empty <w:picture/>.
                     sdtProps.AppendChild(new SdtContentPicture());
                     break;
+                case "checkbox":
+                    // Word checkbox content control — see inline branch above.
+                    sdtProps.AppendChild(BuildSdtCheckBox(IsTruthy(ciProps.GetValueOrDefault("checked", "false"))));
+                    break;
                 case "richtext" or "rich":
                     break;
                 default:
@@ -2403,7 +2418,10 @@ public partial class WordHandler
 
             sdtBlock.AppendChild(sdtProps);
             var sdtContent = new SdtContentBlock();
-            var contentPara = new Paragraph(new Run(new Text(sdtText) { Space = SpaceProcessingModeValues.Preserve }));
+            var blockSeedText = sdtType == "checkbox" && string.IsNullOrEmpty(sdtText)
+                ? (IsTruthy(ciProps.GetValueOrDefault("checked", "false")) ? "☒" : "☐")
+                : sdtText;
+            var contentPara = new Paragraph(new Run(new Text(blockSeedText) { Space = SpaceProcessingModeValues.Preserve }));
             sdtContent.AppendChild(contentPara);
             sdtBlock.AppendChild(sdtContent);
 
@@ -2444,6 +2462,25 @@ public partial class WordHandler
         return resultPath;
     }
 
+    // Build a Word checkbox content-control marker (<w14:checkbox>) for the sdtPr.
+    // checked flag + the standard MS-Gothic 2612/2610 box glyph states, matching
+    // what Word writes for its "Check Box Content Control". The SDK declares the
+    // w14 namespace automatically on serialization.
+    private static DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox BuildSdtCheckBox(bool isChecked)
+    {
+        return new DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox
+        {
+            Checked = new DocumentFormat.OpenXml.Office2010.Word.Checked
+            {
+                Val = isChecked
+                    ? DocumentFormat.OpenXml.Office2010.Word.OnOffValues.One
+                    : DocumentFormat.OpenXml.Office2010.Word.OnOffValues.Zero
+            },
+            CheckedState = new DocumentFormat.OpenXml.Office2010.Word.CheckedState { Val = "2612", Font = "MS Gothic" },
+            UncheckedState = new DocumentFormat.OpenXml.Office2010.Word.UncheckedState { Val = "2610", Font = "MS Gothic" }
+        };
+    }
+
     // BUG-DUMP-SDTPROPS: apply the form-control sdtPr children that the typed
     // dump→batch path previously dropped — placeholder docPart + showingPlcHdr,
     // date-picker selected value/locale/calendar/store-as, and combo/dropdown
@@ -2460,7 +2497,8 @@ public partial class WordHandler
         // elements that placeholder + showingPlcHdr must precede per CT_SdtPr.
         bool typeIsContent = typeElement is SdtContentDate or SdtContentComboBox
             or SdtContentDropDownList or SdtContentText
-            or SdtContentGroup or SdtContentPicture;
+            or SdtContentGroup or SdtContentPicture
+            or DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox;
         OpenXmlElement? insertBefore = typeIsContent ? typeElement : null;
 
         void InsertSchemaOrdered(OpenXmlElement el)

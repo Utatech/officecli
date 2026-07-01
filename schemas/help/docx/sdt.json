@@ -23,7 +23,7 @@
   "properties": {
     "type": {
       "type": "enum",
-      "description": "SDT variant. Supported at add-time: text, richtext, dropdown, combobox, date, group, picture. checkbox / buildingBlockGallery / repeatingSection are not implemented at add-time — create those in Word and edit via CLI. Type cannot be changed after creation.",
+      "description": "SDT variant. Supported at add-time: text, richtext, dropdown, combobox, date, group, picture, checkbox. buildingBlockGallery / repeatingSection are not implemented at add-time — create those in Word and edit via CLI. Type cannot be changed after creation.",
       "values": [
         "text",
         "richtext",
@@ -31,7 +31,8 @@
         "combobox",
         "date",
         "group",
-        "picture"
+        "picture",
+        "checkbox"
       ],
       "add": true,
       "set": false,
@@ -39,7 +40,7 @@
       "examples": [
         "--prop type=text",
         "--prop type=dropdown",
-        "--prop type=picture"
+        "--prop type=checkbox"
       ],
       "readback": "type descriptor",
       "enforcement": "report"
@@ -78,6 +79,18 @@
         "--prop text=\"[Enter name]\""
       ],
       "readback": "concatenated text",
+      "enforcement": "report"
+    },
+    "checked": {
+      "type": "bool",
+      "description": "checkbox content-control checked state (<w14:checked w14:val=\"1|0\">). Checkbox controls only; default false. The content run shows ☒ (checked) / ☐ (unchecked).",
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": [
+        "--prop type=checkbox --prop checked=true"
+      ],
+      "readback": "true | false (checkbox controls only)",
       "enforcement": "report"
     },
     "format": {

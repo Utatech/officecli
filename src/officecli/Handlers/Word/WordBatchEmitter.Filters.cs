@@ -14,6 +14,11 @@ public static partial class WordBatchEmitter
     private static readonly HashSet<string> SkipKeys = new(StringComparer.OrdinalIgnoreCase)
     {
         "basedOn.path",
+        // Read-side convenience derived from a mermaid picture's alt-text
+        // (`alt=mermaid:<source>`). The alt already carries + round-trips the
+        // source, so re-emitting `mermaid=<source>` too would double the payload
+        // and add an inert prop AddPicture ignores. Storage is alt; drop the mirror.
+        "mermaid",
         // Comment resolved-state (done) + reply-parent (parentId) are readback
         // keys backed by word/commentsExtended.xml, which the dump round-trips
         // verbatim via a raw `/commentsExtended replace`. Emitting them as typed

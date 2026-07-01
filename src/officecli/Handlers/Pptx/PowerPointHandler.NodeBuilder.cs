@@ -2517,6 +2517,15 @@ public partial class PowerPointHandler
         if (!string.IsNullOrEmpty(alt)) node.Format["alt"] = alt;
         else node.Format["alt"] = "(missing)";
 
+        // A picture rendered from mermaid (render=image) stamps `mermaid:<source>`
+        // into its alt-text as the regeneration carrier. Surface the bare source as
+        // a first-class Format["mermaid"] so dump/get/agents read it directly
+        // instead of string-slicing the accessibility text. Storage stays in alt
+        // (round-trips for free); this is a read-side convenience only.
+        if (!string.IsNullOrEmpty(alt)
+            && alt.StartsWith(Core.Diagram.MermaidImageRenderer.SourceTag, StringComparison.Ordinal))
+            node.Format["mermaid"] = alt.Substring(Core.Diagram.MermaidImageRenderer.SourceTag.Length);
+
         // CONSISTENCY(picture-relid): mirror docx (WordHandler.ImageHelpers
         // emits Format["relId"] on the run-picture) and xlsx. Without this
         // key, TryExtractBinary refuses to extract the image — `get --save`

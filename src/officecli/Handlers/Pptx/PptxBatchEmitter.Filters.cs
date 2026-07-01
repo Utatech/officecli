@@ -16,6 +16,11 @@ public static partial class PptxBatchEmitter
     {
         // Internal relationship id — unstable across packages, see WordBatchEmitter.
         "relId",
+        // Read-side convenience derived from a mermaid picture's alt-text
+        // (`alt=mermaid:<source>`). The alt already carries + round-trips the
+        // source, so re-emitting `mermaid=<source>` too would double the payload
+        // and add an inert prop AddPicture ignores. Storage is alt; drop the mirror.
+        "mermaid",
         // CONSISTENCY(animation-spid-roundtrip): cNvPr id used to be a skip
         // key on the assumption that ids auto-renumber. But PowerPoint
         // animations reference target shapes by raw id (<p:spTgt spid="N"/>),

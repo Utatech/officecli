@@ -354,6 +354,16 @@ public partial class WordHandler
         if (extent?.Cy != null) node.Format["height"] = $"{extent.Cy.Value / EmuConverter.EmuPerCmF:F1}cm";
         if (docProps?.Description?.Value != null) node.Format["alt"] = docProps.Description.Value;
 
+        // A picture rendered from mermaid (render=image) stamps `mermaid:<source>`
+        // into its alt-text as the regeneration carrier. Surface the bare source as
+        // a first-class Format["mermaid"] so dump/get/agents read it directly instead
+        // of slicing the accessibility text. Storage stays in alt (round-trips for
+        // free); this is a read-side convenience only. Mirrors the pptx picture node.
+        var mermaidAlt = docProps?.Description?.Value;
+        if (mermaidAlt != null
+            && mermaidAlt.StartsWith(Core.Diagram.MermaidImageRenderer.SourceTag, StringComparison.Ordinal))
+            node.Format["mermaid"] = mermaidAlt.Substring(Core.Diagram.MermaidImageRenderer.SourceTag.Length);
+
         // BUG-DUMP-R51-1: a click-hyperlink on the image — <a:hlinkClick r:id="…">
         // on the picture's <pic:cNvPr> (NonVisualDrawingProperties.HyperlinkOnClick),
         // or the same on <wp:docPr> (DW.DocProperties.HyperlinkOnClick) — makes the

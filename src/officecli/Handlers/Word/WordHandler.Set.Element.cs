@@ -3220,6 +3220,77 @@ public partial class WordHandler
     }
 
     /// <summary>
+    /// Resize a wpg:wgp group (e.g. a `diagram`). Mirrors the pptx group: set the
+    /// group <c>&lt;a:ext&gt;</c> and the layout <c>&lt;wp:extent&gt;</c> while
+    /// leaving <c>&lt;a:chExt&gt;</c> as the child-coordinate baseline (so Word
+    /// compresses the children), then re-bake child font sizes by the net resize —
+    /// Word scales group geometry on open but does NOT re-bake font (only an
+    /// interactive drag does). fontRatio = min(width-ratio, height-ratio) so a
+    /// width-only shrink still scales font down and a one-dimension grow leaves it.
+    /// </summary>
+    private List<string> SetGroupProps(OpenXmlElement wgp, Dictionary<string, string> properties)
+    {
+        var unsupported = new List<string>();
+        const string ANs = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        const string WpNs = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+        OpenXmlElement? AChild(OpenXmlElement parent, string local) =>
+            parent.ChildElements.FirstOrDefault(e => e.LocalName == local && e.NamespaceUri == ANs);
+
+        var grpSpPr = wgp.ChildElements.FirstOrDefault(e => e.LocalName == "grpSpPr");
+        var xfrm = grpSpPr != null ? AChild(grpSpPr, "xfrm") : null;
+        var ext = xfrm != null ? AChild(xfrm, "ext") : null;
+
+        string? widthRaw = properties.GetValueOrDefault("width");
+        string? heightRaw = properties.GetValueOrDefault("height");
+        if ((widthRaw != null || heightRaw != null) && ext != null)
+        {
+            long preCx = ReadUnqualifiedLong(ext, "cx") ?? 0;
+            long preCy = ReadUnqualifiedLong(ext, "cy") ?? 0;
+            // The anchor wrapper carries the matching <wp:extent> for the whole group.
+            var wpExtent = wgp.Ancestors()
+                .FirstOrDefault(e => e.LocalName == "anchor" || e.LocalName == "inline")
+                ?.Descendants().FirstOrDefault(e => e.LocalName == "extent" && e.NamespaceUri == WpNs);
+            if (widthRaw != null)
+            {
+                long cx = ParseDrawingSize(widthRaw, preCx > 0 ? preCx : 914_400);
+                ext.SetAttribute(new OpenXmlAttribute("cx", "", cx.ToString()));
+                wpExtent?.SetAttribute(new OpenXmlAttribute("cx", "", cx.ToString()));
+            }
+            if (heightRaw != null)
+            {
+                long cy = ParseDrawingSize(heightRaw, preCy > 0 ? preCy : 914_400);
+                ext.SetAttribute(new OpenXmlAttribute("cy", "", cy.ToString()));
+                wpExtent?.SetAttribute(new OpenXmlAttribute("cy", "", cy.ToString()));
+            }
+            long postCx = ReadUnqualifiedLong(ext, "cx") ?? preCx;
+            long postCy = ReadUnqualifiedLong(ext, "cy") ?? preCy;
+            if (preCx > 0 && preCy > 0)
+            {
+                double ratio = Math.Min((double)postCx / preCx, (double)postCy / preCy);
+                if (Math.Abs(ratio - 1.0) > 1e-6) ScaleGroupFontHalfPts(wgp, ratio);
+            }
+        }
+
+        foreach (var k in properties.Keys)
+            if (k.ToLowerInvariant() is not ("width" or "height"))
+                unsupported.Add(k);
+        SaveDoc();
+        return unsupported;
+    }
+
+    // Multiply every child run's font size (w:sz / w:szCs, in half-points) by
+    // <paramref name="ratio"/>, floor 1pt (2 half-points).
+    private static void ScaleGroupFontHalfPts(OpenXmlElement wgp, double ratio)
+    {
+        foreach (var sz in wgp.Descendants<FontSize>())
+            if (int.TryParse(sz.Val?.Value, out var hp))
+                sz.Val = Math.Max(2, (int)Math.Round(hp * ratio)).ToString();
+        foreach (var sz in wgp.Descendants<FontSizeComplexScript>())
+            if (int.TryParse(sz.Val?.Value, out var hp))
+                sz.Val = Math.Max(2, (int)Math.Round(hp * ratio)).ToString();
+    }
+
+    /// <summary>
     /// Insert a freshly-built spPr child (solidFill/noFill/ln) at the correct
     /// CT_ShapeProperties position. Order is: xfrm, prstGeom (or custGeom), fill
     /// (noFill/solidFill/gradFill/blipFill/pattFill/grpFill), ln, effectLst, …

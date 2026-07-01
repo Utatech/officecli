@@ -1408,6 +1408,16 @@ public partial class WordHandler
                             && e.NamespaceUri == "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"))
                         .Where(e => e != null)
                         .Cast<OpenXmlElement>(),
+                    // /body/group[N] → the Nth wpg:wgp group drawing (e.g. a
+                    // `diagram` is emitted as one group so it stays adjustable as
+                    // a unit). Returns the <wpg:wgp> element; `set width/height`
+                    // scales the whole group (mirrors the pptx /slide[N]/group[K]).
+                    "group" => current.Descendants<Drawing>()
+                        .Select(d => (OpenXmlElement?)d.Descendants().FirstOrDefault(e =>
+                            e.LocalName == "wgp"
+                            && e.NamespaceUri == "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"))
+                        .Where(e => e != null)
+                        .Cast<OpenXmlElement>(),
                     // /<para>/tab[N] and /styles/<id>/tab[N] descend
                     // transparently through pPr/tabs (or StyleParagraph-
                     // Properties/tabs) so the user-facing path stays flat

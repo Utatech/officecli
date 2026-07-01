@@ -498,6 +498,13 @@ public partial class WordHandler
             && string.Equals(element.NamespaceUri,
                 "http://schemas.microsoft.com/office/word/2010/wordprocessingShape", StringComparison.Ordinal))
             return SetShapeProps(element, properties);
+        // /body/group[N] resolves to the wpg:wgp group. Resizing scales the whole
+        // group (grpSpPr ext + ancestor wp:extent, leaving chExt as the baseline
+        // so Word compresses the children) and re-bakes child font sizes.
+        if (string.Equals(element.LocalName, "wgp", StringComparison.Ordinal)
+            && string.Equals(element.NamespaceUri,
+                "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup", StringComparison.Ordinal))
+            return SetGroupProps(element, properties);
         // Other shape carriers (Drawing host or v:shape descendant) have no
         // curated Set handler. Without this guard the dispatcher returned an empty
         // unsupported list → CLI reported "Updated" (exit 0) while writing

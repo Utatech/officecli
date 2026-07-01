@@ -3344,4 +3344,20 @@ public partial class WordHandler
         }
         return count;
     }
+
+    // 1-based index of the anchor paragraph's wpg:wgp group among all groups in
+    // the host — matches the Navigation "group" resolver (a `diagram` emits one
+    // group). Kept separate from CountShapesInHost: a group carries child
+    // textboxes, so the shape/textbox heuristics would misclassify it.
+    private static int CountGroupsInHost(OpenXmlElement host, Paragraph anchor)
+    {
+        int count = 0;
+        foreach (var p in host.Elements<Paragraph>())
+        {
+            if (p.Descendants<Drawing>().Any(d => d.InnerXml.Contains("<wpg:wgp")))
+                count++;
+            if (ReferenceEquals(p, anchor)) return count;
+        }
+        return count;
+    }
 }

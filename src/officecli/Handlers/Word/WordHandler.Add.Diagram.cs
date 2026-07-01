@@ -100,50 +100,79 @@ public partial class WordHandler
         int fontPt = Math.Max(1, (int)Math.Round(18 * lo.FontScale * scale));
         int labelPt = Math.Max(1, (int)Math.Round(10 * scale));
 
-        var sb = new StringBuilder();
-        int z = 0; // relativeHeight — nodes behind, edges above, labels on top
-        // Drawings aren't in the document yet, so NextDocPropId() would return
-        // the same value for each; allocate one base and increment locally so
-        // every wp:docPr/@id is unique (else Word's "id must be unique" error).
+        // Drawings aren't in the document yet, so NextDocPropId() would return the
+        // same value for each; allocate one base and increment locally so every id
+        // (the group's wp:docPr + each child's wps:cNvPr) is unique.
         uint nextId = NextDocPropId();
 
-        // nodes (lowest z)
-        foreach (var n in lo.Nodes)
-        {
-            var (geom, fill, line) = DiagramStyles.ByShape[n.Shape];
-            sb.Append(BuildDiagramNodeXml(nextId++, z++, geom, fill, line, n.Label, fontPt,
-                Emu(n.X), Emu(n.Y), Emu(n.W), Emu(n.H)));
-        }
-
-        // edges: one custGeom polyline per edge (arrow on the last point)
+        // Compute every child's absolute EMU box FIRST so the group bounding box —
+        // and thus each child's group-relative offset — can be derived. z-order:
+        // nodes behind, edges above, labels on top (children render in document
+        // order inside the group).
+        var nodeBoxes = lo.Nodes
+            .Select(n => (n, x: Emu(n.X), y: Emu(n.Y), cx: Emu(n.W), cy: Emu(n.H)))
+            .ToList();
+        var edgeBoxes = new List<(RoutedEdge e, long minX, long minY, long w, long h)>();
         foreach (var e in lo.Edges)
         {
             if (e.Points.Count < 2) continue;
-            sb.Append(BuildDiagramEdgeXml(nextId++, z++, e.Points, e.ArrowAtEnd, e.Dashed, Emu));
+            long[] px = e.Points.Select(p => Emu(p.X)).ToArray();
+            long[] py = e.Points.Select(p => Emu(p.Y)).ToArray();
+            long mnX = px.Min(), mnY = py.Min(), w = px.Max() - mnX, h = py.Max() - mnY;
+            const long pad = 12700; // 1pt — keep an axis-aligned segment non-degenerate
+            if (w < pad) { mnX -= (pad - w) / 2; w = pad; }
+            if (h < pad) { mnY -= (pad - h) / 2; h = pad; }
+            edgeBoxes.Add((e, mnX, mnY, w, h));
         }
+        var labelBoxes = lo.Labels
+            .Select(lbl =>
+            {
+                double lw = Math.Max(1.0, DiagramLabelWidthCm(lbl.Text));
+                return (lbl, x: Emu(lbl.Cx - lw / 2), y: Emu(lbl.Cy - 0.26), cx: Emu(lw), cy: Emu(0.52));
+            })
+            .ToList();
 
-        // edge labels (highest z — white masks sit on top of the lines)
-        foreach (var lbl in lo.Labels)
+        // Group bounding box across every child.
+        var lefts = new List<long>(); var tops = new List<long>();
+        var rights = new List<long>(); var bots = new List<long>();
+        foreach (var b in nodeBoxes) { lefts.Add(b.x); tops.Add(b.y); rights.Add(b.x + b.cx); bots.Add(b.y + b.cy); }
+        foreach (var b in edgeBoxes) { lefts.Add(b.minX); tops.Add(b.minY); rights.Add(b.minX + b.w); bots.Add(b.minY + b.h); }
+        foreach (var b in labelBoxes) { lefts.Add(b.x); tops.Add(b.y); rights.Add(b.x + b.cx); bots.Add(b.y + b.cy); }
+        long gMinX = lefts.Min(), gMinY = tops.Min();
+        long gW = rights.Max() - gMinX, gH = bots.Max() - gMinY;
+
+        // Build the <wps:wsp> children in group-relative coordinates (off = abs − gMin).
+        var kids = new StringBuilder();
+        foreach (var b in nodeBoxes)
         {
-            double w = Math.Max(1.0, DiagramLabelWidthCm(lbl.Text));
+            var (geom, fill, line) = DiagramStyles.ByShape[b.n.Shape];
+            kids.Append(BuildDiagramNodeWsp(nextId++, geom, fill, line, b.n.Label, fontPt,
+                b.x - gMinX, b.y - gMinY, b.cx, b.cy));
+        }
+        foreach (var b in edgeBoxes)
+            kids.Append(BuildDiagramEdgeWsp(nextId++, b.e.Points, b.e.ArrowAtEnd, b.e.Dashed, Emu,
+                b.minX, b.minY, b.w, b.h, gMinX, gMinY));
+        foreach (var b in labelBoxes)
             // Opaque (flowchart) labels mask the edge line; sequence labels sit in
             // empty space → no fill, so they don't break the lifeline they cross.
-            sb.Append(BuildDiagramNodeXml(nextId++, z++, "rect", lbl.Opaque ? "FFFFFF" : null, null, lbl.Text, labelPt,
-                Emu(lbl.Cx - w / 2), Emu(lbl.Cy - 0.26), Emu(w), Emu(0.52), label: true));
-        }
+            kids.Append(BuildDiagramNodeWsp(nextId++, "rect", b.lbl.Opaque ? "FFFFFF" : null, null, b.lbl.Text, labelPt,
+                b.x - gMinX, b.y - gMinY, b.cx, b.cy, label: true));
 
-        // All drawings live as runs in a single anchor paragraph (floating
-        // anchors are positioned absolutely, so one host paragraph suffices).
+        // ONE drawing: a wpg group wrapping every child, anchored at the group's
+        // top-left (margin-relative). chOff/chExt == off/ext so children keep the
+        // coordinates computed above; a later `set width/height` on the group
+        // scales them via that baseline (mirrors the pptx group wrapper), so the
+        // whole diagram stays adjustable as a unit after Add.
+        string groupXml = BuildDiagramGroupDrawing(nextId++, gMinX, gMinY, gW, gH, kids.ToString());
         var para = new Paragraph();
-        foreach (var drawingXml in SplitDrawings(sb.ToString()))
-            para.AppendChild(new Run(ParseDrawingFromXml(drawingXml)));
+        para.AppendChild(new Run(ParseDrawingFromXml(groupXml)));
         AssignParaId(para);
         InsertAtIndexOrAppend(host, para, index);
 
-        // All drawings share one host paragraph; report it as a single shape
-        // anchor (the diagram is add-only — users edit the resulting shapes).
-        int shapeIdx = CountShapesInHost(host, para);
-        return $"{hostRoot}/shape[{shapeIdx}]";
+        // The whole diagram is a single grouped drawing → one group anchor
+        // (/body/group[N]); `set width/height` on it resizes the diagram as a unit.
+        int groupIdx = CountGroupsInHost(host, para);
+        return $"{hostRoot}/group[{groupIdx}]";
     }
 
     // High-fidelity path: render with the real mermaid.js (headless browser) to PNG
@@ -155,6 +184,10 @@ public partial class WordHandler
     {
         string imgPath;
         try { imgPath = MermaidImageRenderer.RenderToPngFile(mermaidText); }
+        // A syntax error is bad input — surface it (with mermaid's line-numbered
+        // message) so the caller can fix the source. Never fall back to native: the
+        // synthesizer would reject the same broken text or, worse, draw garbage.
+        catch (MermaidSyntaxException) { throw; }
         catch when (allowNativeFallback) { return AddDiagramNative(parent, parentPath, index, properties, mermaidText); }
         try
         {
@@ -164,55 +197,70 @@ public partial class WordHandler
             pic["src"] = imgPath;
             if (!(pic.TryGetValue("alt", out var a) && !string.IsNullOrEmpty(a)))
                 pic["alt"] = MermaidImageRenderer.SourceTag + mermaidText;
-            // Default sizing parity with the native path AND the pptx image path:
-            // fit the aspect-correct PNG into the section's content BOX — both the
-            // text-area width AND the available page height. Pinning width alone
-            // (the old default) blew a tall/portrait diagram past the page bottom,
-            // spilling one flowchart across several pages. Never enlarge; caller's
-            // explicit width/height still wins.
-            if (!pic.ContainsKey("width") && !pic.ContainsKey("height"))
+            // Sizing parity with the native path AND the pptx image path: the diagram
+            // is ALWAYS scaled to FIT its box with aspect preserved (never stretched).
+            // The box is the caller's width/height when given, else the section's
+            // content BOX (text-area width AND available page height, so a tall
+            // flowchart stays on one page). We emit WIDTH only and let AddPicture
+            // derive the height from the aspect ratio — passing both width and height
+            // straight through would squash a portrait diagram into a wide box.
             {
-                double boxWCm = SectionContentWidthCm();
-                double outWCm = boxWCm; // fallback: dims unreadable → old width-fit
+                double boxWCm = pic.TryGetValue("width", out var wOverride)
+                    ? ParseEmu(wOverride) / DiagramCmToEmu : SectionContentWidthCm();
+                double boxHCm = pic.TryGetValue("height", out var hOverride)
+                    ? ParseEmu(hOverride) / DiagramCmToEmu : SectionContentHeightCm();
+                double outWCm = boxWCm; // fallback: dims unreadable → plain width-fit
                 using (var s = System.IO.File.OpenRead(imgPath))
                 {
                     var dims = OfficeCli.Core.ImageSource.TryGetDimensions(s);
                     if (dims is { Width: > 0, Height: > 0 } d)
                     {
-                        double boxHCm = SectionContentHeightCm();
                         double fit = Math.Min(boxWCm / d.Width, boxHCm / d.Height);
-                        outWCm = d.Width * fit; // aspect preserved by keeping height implicit
+                        outWCm = d.Width * fit;
                     }
                 }
                 pic["width"] = outWCm.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "cm";
+                pic.Remove("height"); // aspect preserved: AddPicture derives height from width
             }
             return AddPicture(parent, parentPath, index, pic);
         }
         finally { try { System.IO.File.Delete(imgPath); } catch { /* best effort */ } }
     }
 
-    // Each drawing XML is a complete <w:drawing …>…</w:drawing>; split on the
-    // closing tag so each becomes its own Run (ParseDrawingFromXml wants one).
-    private static IEnumerable<string> SplitDrawings(string concatenated)
-    {
-        const string close = "</w:drawing>";
-        int i = 0;
-        while (true)
-        {
-            int end = concatenated.IndexOf(close, i, StringComparison.Ordinal);
-            if (end < 0) yield break;
-            yield return concatenated.Substring(i, end - i + close.Length);
-            i = end + close.Length;
-        }
-    }
-
     private const string DiagramNs =
         "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" " +
         "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" " +
         "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" " +
+        "xmlns:wpg=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\" " +
         "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"";
 
-    private static string BuildDiagramNodeXml(uint docPropId, int z, string preset, string fill, string? line,
+    // Build the <wpg:wgp> group drawing that wraps every child. chOff/chExt ==
+    // off/ext → children keep the absolute-within-group coordinates they were
+    // built with; a later `set width/height` shrinks ext while chExt stays the
+    // baseline, so Word scales the children (same model as the pptx group).
+    private static string BuildDiagramGroupDrawing(uint groupId, long posX, long posY, long cx, long cy, string childrenXml)
+    {
+        return
+            $"<w:drawing {DiagramNs}><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" " +
+            "relativeHeight=\"2510000\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">" +
+            "<wp:simplePos x=\"0\" y=\"0\"/>" +
+            $"<wp:positionH relativeFrom=\"margin\"><wp:posOffset>{posX}</wp:posOffset></wp:positionH>" +
+            $"<wp:positionV relativeFrom=\"margin\"><wp:posOffset>{posY}</wp:posOffset></wp:positionV>" +
+            $"<wp:extent cx=\"{cx}\" cy=\"{cy}\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><wp:wrapNone/>" +
+            $"<wp:docPr id=\"{groupId}\" name=\"Diagram {groupId}\"/>" +
+            "<wp:cNvGraphicFramePr/>" +
+            "<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\">" +
+            "<wpg:wgp><wpg:cNvGrpSpPr/><wpg:grpSpPr>" +
+            $"<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm>" +
+            "</wpg:grpSpPr>" +
+            childrenXml +
+            "</wpg:wgp></a:graphicData></a:graphic></wp:anchor></w:drawing>";
+    }
+
+    // A node/label as a <wps:wsp> child of the group. off/ext are in the group's
+    // child coordinate space (== absolute-within-group EMU here). No wp:anchor —
+    // the enclosing group owns placement.
+    private static string BuildDiagramNodeWsp(uint id, string preset, string? fill, string? line,
                                               string text, int fontPt, long x, long y, long cx, long cy,
                                               bool label = false)
     {
@@ -231,51 +279,38 @@ public partial class WordHandler
             "<wps:txbx><w:txbxContent><w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr>" +
             $"<w:r><w:rPr>{rFonts}<w:sz w:val=\"{szHalfPt}\"/><w:szCs w:val=\"{szHalfPt}\"/></w:rPr>" +
             $"<w:t xml:space=\"preserve\">{SecurityElement.Escape(text)}</w:t></w:r></w:p></w:txbxContent></wps:txbx>";
-        // Edge labels: single-line, no wrap, zero insets so the (fit-scaled,
-        // short) box never clips the text. Nodes: wrap inside the box, centered.
+        // Zero the text insets. Word's default insets (~0.25cm L/R, ~0.13cm T/B)
+        // are fixed EMU, not scaled — on a fit-shrunk node box (~1cm wide) they
+        // eat over half the width, forcing the text to wrap and clip (looks like
+        // "font too big for the box"). The layout already bakes visual padding
+        // into the box size. Labels: single-line no-wrap; nodes: wrap + normAutofit.
         string bodyPr = label
             ? "<wps:bodyPr rot=\"0\" wrap=\"none\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\" anchor=\"ctr\" anchorCtr=\"1\"><a:noAutofit/></wps:bodyPr>"
-            : "<wps:bodyPr rot=\"0\" anchor=\"ctr\" anchorCtr=\"0\"><a:normAutofit/></wps:bodyPr>";
+            : "<wps:bodyPr rot=\"0\" lIns=\"0\" tIns=\"0\" rIns=\"0\" bIns=\"0\" anchor=\"ctr\" anchorCtr=\"0\"><a:normAutofit/></wps:bodyPr>";
+        string nm = label ? "DiagramLabel" : "DiagramShape";
         return
-            $"<w:drawing {DiagramNs}><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" " +
-            $"relativeHeight=\"{2510000 + z}\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">" +
-            "<wp:simplePos x=\"0\" y=\"0\"/>" +
-            $"<wp:positionH relativeFrom=\"margin\"><wp:posOffset>{x}</wp:posOffset></wp:positionH>" +
-            $"<wp:positionV relativeFrom=\"margin\"><wp:posOffset>{y}</wp:posOffset></wp:positionV>" +
-            $"<wp:extent cx=\"{cx}\" cy=\"{cy}\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><wp:wrapNone/>" +
-            $"<wp:docPr id=\"{docPropId}\" name=\"DiagramShape {docPropId}\"/><wp:cNvGraphicFramePr/>" +
-            "<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">" +
-            "<wps:wsp><wps:cNvSpPr/><wps:spPr>" +
-            $"<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm>" +
+            $"<wps:wsp><wps:cNvPr id=\"{id}\" name=\"{nm} {id}\"/><wps:cNvSpPr/><wps:spPr>" +
+            $"<a:xfrm><a:off x=\"{x}\" y=\"{y}\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm>" +
             $"<a:prstGeom prst=\"{preset}\"><a:avLst/></a:prstGeom>{fillXml}{lnXml}</wps:spPr>" +
-            $"{txbx}{bodyPr}" +
-            "</wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing>";
+            $"{txbx}{bodyPr}</wps:wsp>";
     }
 
-    private static string BuildDiagramEdgeXml(uint docPropId, int z, IReadOnlyList<Core.Diagram.Pt> points,
-                                              bool arrowAtEnd, bool dashed, Func<double, long> emu)
+    // An edge as a <wps:wsp> child: a custGeom polyline whose path is relative to
+    // its own box, positioned at (absMinX−groupMinX, absMinY−groupMinY) in the
+    // group's child coordinate space.
+    private static string BuildDiagramEdgeWsp(uint id, IReadOnlyList<Pt> points,
+                                              bool arrowAtEnd, bool dashed, Func<double, long> emu,
+                                              long absMinX, long absMinY, long w, long h,
+                                              long groupMinX, long groupMinY)
     {
-        // Map points to EMU, then pad the thin axis so a purely axis-aligned
-        // segment (cx==0 or cy==0) still has a non-degenerate bounding box that
-        // Word will render.
-        long[] px = points.Select(p => emu(p.X)).ToArray();
-        long[] py = points.Select(p => emu(p.Y)).ToArray();
-        long minX = px.Min(), maxX = px.Max(), minY = py.Min(), maxY = py.Max();
-        long w = maxX - minX, h = maxY - minY;
-        const long pad = 12700; // 1pt
-        long shiftX = 0, shiftY = 0;
-        if (w < pad) { shiftX = (pad - w) / 2; minX -= shiftX; w = pad; }
-        if (h < pad) { shiftY = (pad - h) / 2; minY -= shiftY; h = pad; }
-
         var path = new StringBuilder();
         for (int i = 0; i < points.Count; i++)
         {
-            long x = px[i] - minX, y = py[i] - minY;
+            long x = emu(points[i].X) - absMinX, y = emu(points[i].Y) - absMinY;
             path.Append(i == 0
                 ? $"<a:moveTo><a:pt x=\"{x}\" y=\"{y}\"/></a:moveTo>"
                 : $"<a:lnTo><a:pt x=\"{x}\" y=\"{y}\"/></a:lnTo>");
         }
-
         string dash = dashed ? "<a:prstDash val=\"dash\"/>" : "";
         string arrow = arrowAtEnd ? "<a:tailEnd type=\"triangle\"/>" : "";
         string ln = $"<a:ln w=\"12700\" cap=\"flat\"><a:solidFill><a:srgbClr val=\"{DiagramStyles.EdgeColor}\"/></a:solidFill>{dash}<a:round/>{arrow}</a:ln>";
@@ -283,17 +318,9 @@ public partial class WordHandler
             $"<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"0\" t=\"0\" r=\"{w}\" b=\"{h}\"/>" +
             $"<a:pathLst><a:path w=\"{w}\" h=\"{h}\">{path}</a:path></a:pathLst></a:custGeom>";
         return
-            $"<w:drawing {DiagramNs}><wp:anchor distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" simplePos=\"0\" " +
-            $"relativeHeight=\"{2510000 + z}\" behindDoc=\"0\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">" +
-            "<wp:simplePos x=\"0\" y=\"0\"/>" +
-            $"<wp:positionH relativeFrom=\"margin\"><wp:posOffset>{minX}</wp:posOffset></wp:positionH>" +
-            $"<wp:positionV relativeFrom=\"margin\"><wp:posOffset>{minY}</wp:posOffset></wp:positionV>" +
-            $"<wp:extent cx=\"{w}\" cy=\"{h}\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/><wp:wrapNone/>" +
-            $"<wp:docPr id=\"{docPropId}\" name=\"DiagramEdge {docPropId}\"/><wp:cNvGraphicFramePr/>" +
-            "<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">" +
-            "<wps:wsp><wps:cNvSpPr/><wps:spPr>" +
-            $"<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{w}\" cy=\"{h}\"/></a:xfrm>{custGeom}<a:noFill/>{ln}</wps:spPr>" +
-            "<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing>";
+            $"<wps:wsp><wps:cNvPr id=\"{id}\" name=\"DiagramEdge {id}\"/><wps:cNvSpPr/><wps:spPr>" +
+            $"<a:xfrm><a:off x=\"{absMinX - groupMinX}\" y=\"{absMinY - groupMinY}\"/><a:ext cx=\"{w}\" cy=\"{h}\"/></a:xfrm>" +
+            $"{custGeom}<a:noFill/>{ln}</wps:spPr><wps:bodyPr/></wps:wsp>";
     }
 
     private static double DiagramLabelWidthCm(string text)

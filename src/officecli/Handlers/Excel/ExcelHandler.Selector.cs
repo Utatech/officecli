@@ -329,14 +329,32 @@ public partial class ExcelHandler
         return allCharts[index - 1];
     }
 
+    /// <summary>Charts addressable by a raw <c>chart[N]</c> path: the anchored
+    /// charts (drawing order, both legacy and cx — matching query/get), followed
+    /// by any chart parts NOT yet referenced by a graphicFrame. The trailing
+    /// unanchored parts restore the <c>add-part → raw-set chart[N]</c> workflow,
+    /// where the chart XML is authored before its drawing anchor exists.</summary>
+    private static List<ExcelChartInfo> ChartsForRaw(DrawingsPart drawingsPart)
+    {
+        var list = GetExcelCharts(drawingsPart);
+        var seen = new HashSet<OpenXmlPart>();
+        foreach (var c in list)
+            seen.Add(c.IsExtended ? (OpenXmlPart)c.ExtendedPart! : c.StandardPart!);
+        foreach (var cp in drawingsPart.ChartParts)
+            if (seen.Add(cp)) list.Add(new ExcelChartInfo { StandardPart = cp });
+        foreach (var ep in drawingsPart.ExtendedChartParts)
+            if (seen.Add(ep)) list.Add(new ExcelChartInfo { ExtendedPart = ep });
+        return list;
+    }
+
     /// <summary>Raw-XML resolver for a sheet-scoped chart path (/Sheet/chart[N]).
-    /// Uses GetExcelCharts so both legacy and extended (cx) charts resolve in the
-    /// same document order that query/get expose.</summary>
+    /// Resolves anchored (drawing-order) and unanchored (add-part) charts, both
+    /// legacy and extended (cx).</summary>
     private static string GetChartSpaceOuterXml(DrawingsPart? drawingsPart, int index)
     {
         if (drawingsPart == null)
             throw new ArgumentException("Sheet has no drawings/charts");
-        return ChartSpaceOuterXmlAt(GetExcelCharts(drawingsPart), index);
+        return ChartSpaceOuterXmlAt(ChartsForRaw(drawingsPart), index);
     }
 
     /// <summary>Return the ChartSpace OuterXml of the 1-based chart in <paramref name="charts"/>,
@@ -357,7 +375,7 @@ public partial class ExcelHandler
     {
         if (drawingsPart == null)
             throw new ArgumentException("Sheet has no drawings/charts");
-        return ChartSpaceElementAt(GetExcelCharts(drawingsPart), index);
+        return ChartSpaceElementAt(ChartsForRaw(drawingsPart), index);
     }
 
     /// <summary>Live ChartSpace root of the 1-based chart in <paramref name="charts"/>,

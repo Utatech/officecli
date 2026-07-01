@@ -198,7 +198,7 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
             var chartIdx = int.Parse(globalChartMatch.Groups[1].Value);
             var all = new List<ExcelChartInfo>();
             foreach (var (_, wsp) in GetWorksheets())
-                if (wsp.DrawingsPart != null) all.AddRange(GetExcelCharts(wsp.DrawingsPart));
+                if (wsp.DrawingsPart != null) all.AddRange(ChartsForRaw(wsp.DrawingsPart));
             if (all.Count == 0)
                 throw new ArgumentException("No charts found in workbook");
             return ChartSpaceOuterXmlAt(all, chartIdx);
@@ -374,7 +374,7 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
                     var chartIdx = int.Parse(globalChartMatch.Groups[1].Value);
                     var all = new List<ExcelChartInfo>();
                     foreach (var (_, wsp) in GetWorksheets())
-                        if (wsp.DrawingsPart != null) all.AddRange(GetExcelCharts(wsp.DrawingsPart));
+                        if (wsp.DrawingsPart != null) all.AddRange(ChartsForRaw(wsp.DrawingsPart));
                     if (all.Count == 0)
                         throw new ArgumentException("No charts found in workbook");
                     rootElement = ChartSpaceElementAt(all, chartIdx);

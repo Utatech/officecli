@@ -2613,6 +2613,18 @@ public partial class PowerPointHandler
         if (picXfrm?.HorizontalFlip?.Value == true) node.Format["flipH"] = true;
         if (picXfrm?.VerticalFlip?.Value == true) node.Format["flipV"] = true;
 
+        // CONSISTENCY(picture-geometry): a picture can be "cropped to shape" via a
+        // non-rectangle <a:prstGeom> on its spPr (e.g. prst="ellipse"). AddPicture
+        // stamps a default rect, so without surfacing the preset the crop-to-shape
+        // is lost on dump→replay — the picture renders as a plain rectangle. Emit
+        // the preset name; AddPicture accepts it via the `geometry`/`shape` prop.
+        // Skip "rect" — it is AddPicture's default, so emitting it on every plain
+        // picture would only add noise.
+        var picPresetName = pic.ShapeProperties?
+            .GetFirstChild<Drawing.PresetGeometry>()?.Preset?.InnerText;
+        if (!string.IsNullOrEmpty(picPresetName) && picPresetName != "rect")
+            node.Format["geometry"] = picPresetName;
+
         // CONSISTENCY(zorder): mirror shape/connector — emit for any
         // ShapeTree-rooted picture so Add(picture, zorder=N) round-trips.
         if (pic.Parent is ShapeTree picZTree)

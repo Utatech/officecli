@@ -560,15 +560,20 @@ public static partial class PptxBatchEmitter
     }
 
     // True when <paramref name="offset"/> falls inside an unclosed
-    // <p:sp> or <p:grpSp> region — i.e. the AlternateContent at that
-    // position is a descendant of a shape (e.g. equation txBody) rather
-    // than a direct child of <p:spTree>. Counts opening minus closing
-    // tags via a regex sweep; treats self-closing forms as immediately
-    // balanced.
+    // <p:sp> / <p:grpSp> / <p:pic> / <p:cxnSp> / <p:graphicFrame> region —
+    // i.e. the AlternateContent at that position is a descendant of a shape
+    // (e.g. an equation txBody, or a Mac-authored <p:pic> whose blipFill is
+    // wrapped in mc:AlternateContent) rather than a direct child of
+    // <p:spTree>. Such nested AlternateContent is owned by that element's own
+    // emitter (EmitPicture / EmitShape / chart / smartart / table / ole) and
+    // must NOT be re-emitted as a loose spTree child (double-injection +
+    // schema-invalid <p:blipFill> under <p:spTree>). Counts opening minus
+    // closing tags via a regex sweep; treats self-closing forms as
+    // immediately balanced.
     private static bool IsInsideShapeOrGroup(string spTreeRegion, int offset)
     {
         var rx = new System.Text.RegularExpressions.Regex(
-            @"<(/?)(p:sp|p:grpSp)(\s[^/>]*?/?|/?)>",
+            @"<(/?)(p:sp|p:grpSp|p:pic|p:cxnSp|p:graphicFrame)(\s[^/>]*?/?|/?)>",
             System.Text.RegularExpressions.RegexOptions.Compiled);
         int depth = 0;
         foreach (System.Text.RegularExpressions.Match m in rx.Matches(spTreeRegion))

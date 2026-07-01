@@ -3257,7 +3257,7 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
             if (idOrIdx >= 1 && idOrIdx <= pictures.Count) pic = pictures[idOrIdx - 1];
         }
         if (pic == null) return null;
-        var blip = pic.BlipFill?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Blip>();
+        var blip = ResolvePictureBlip(pic);
         var embedId = blip?.Embed?.Value;
         if (string.IsNullOrEmpty(embedId)) return null;
         try
@@ -3269,6 +3269,42 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
             return (ms.ToArray(), part.ContentType);
         }
         catch { return null; }
+    }
+
+    // Resolve a picture's effective fill <a:blip>, transparently unwrapping an
+    // <mc:AlternateContent> wrapper. Mac PowerPoint emits the blipFill inside
+    // AlternateContent — a Requires="ma" <mc:Choice> holding a Mac-only source
+    // (often an image PDF) plus an <mc:Fallback> holding the standards-
+    // compliant raster (PNG/JPEG) that every other renderer uses. When the
+    // blipFill is NOT a direct child of <p:pic>, `pic.BlipFill` is null and the
+    // picture would otherwise read as image-less and be DROPPED on dump→replay
+    // (silent element loss). Prefer the Fallback blip (what Windows/real Office
+    // renders); fall back to the Choice, then any descendant blip.
+    private static DocumentFormat.OpenXml.Drawing.Blip? ResolvePictureBlip(Picture pic)
+    {
+        var blip = pic.BlipFill?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Blip>();
+        if (blip != null) return blip;
+
+        var altContent = pic.GetFirstChild<DocumentFormat.OpenXml.AlternateContent>();
+        if (altContent != null)
+        {
+            var fallback = altContent
+                .GetFirstChild<DocumentFormat.OpenXml.AlternateContentFallback>();
+            blip = fallback?.Descendants<DocumentFormat.OpenXml.Drawing.Blip>()
+                .FirstOrDefault();
+            if (blip != null) return blip;
+
+            var choice = altContent
+                .GetFirstChild<DocumentFormat.OpenXml.AlternateContentChoice>();
+            blip = choice?.Descendants<DocumentFormat.OpenXml.Drawing.Blip>()
+                .FirstOrDefault();
+            if (blip != null) return blip;
+        }
+
+        // Last resort: any nested blip (covers other MC nestings). Within a
+        // <p:pic> the only blips are fill blips, so first-in-document-order is
+        // the effective source.
+        return pic.Descendants<DocumentFormat.OpenXml.Drawing.Blip>().FirstOrDefault();
     }
 
     // Return the verbatim <a:clrChange> outer XML on a picture's <a:blip>,

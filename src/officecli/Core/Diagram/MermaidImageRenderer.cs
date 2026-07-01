@@ -30,6 +30,20 @@ namespace OfficeCli.Core.Diagram;
 /// PNG (not SVG) throughout: Office cannot draw mermaid's <c>&lt;foreignObject&gt;</c>
 /// HTML labels, so a raster that bakes in the browser's own rendering is required.</para>
 /// </summary>
+/// <summary>
+/// The mermaid source is syntactically invalid (as opposed to an infrastructure
+/// failure — missing browser, mermaid.js download, screenshot crash). Derives from
+/// <see cref="ArgumentException"/> so the CLI surfaces it as a bad-input error
+/// (<c>success:false</c> with the message) rather than a process failure, and so the
+/// diagram Add path does NOT fall back to the native synthesizer — every backend
+/// rejects the same broken source, and the point is to feed the parse error (with its
+/// line number) back so the caller can fix it.
+/// </summary>
+public sealed class MermaidSyntaxException : ArgumentException
+{
+    public MermaidSyntaxException(string message) : base(message) { }
+}
+
 public static class MermaidImageRenderer
 {
     // Pin a major version so cache + mirror + CDN agree and rendering is stable.
@@ -91,11 +105,13 @@ public static class MermaidImageRenderer
         if (TryLocateMmdc(out var mmdc))
         {
             try { return RenderViaMmdc(mermaid, mmdc); }
+            catch (MermaidSyntaxException) { throw; } // bad input — the browser would reject it too
             catch (Exception e) { failure = e; }
         }
         if (HtmlScreenshot.HasChromeFamily())
         {
             try { return RenderViaChrome(mermaid); }
+            catch (MermaidSyntaxException) { throw; } // surface the parse error, don't mask it
             catch (Exception e) { failure ??= e; }
         }
         throw failure ?? new InvalidOperationException(
@@ -118,6 +134,18 @@ public static class MermaidImageRenderer
         }
         exe = _mmdcExe ?? "";
         return _mmdcExe != null;
+    }
+
+    /// <summary>Heuristic: does mmdc's stderr/stdout describe a source syntax problem
+    /// (vs a crash / environment fault)? mmdc surfaces mermaid's own parser text.</summary>
+    private static bool LooksLikeSyntaxError(string msg)
+    {
+        if (string.IsNullOrEmpty(msg)) return false;
+        return msg.Contains("Parse error", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("Lexical error", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("No diagram type detected", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("UnknownDiagramError", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("Expecting ", StringComparison.Ordinal);
     }
 
     private static string? ProbeMmdc()
@@ -164,7 +192,16 @@ public static class MermaidImageRenderer
                 throw new InvalidOperationException("mmdc timed out after 120s.");
             }
             if (p.ExitCode != 0 || !File.Exists(outPath))
-                throw new InvalidOperationException($"mmdc failed (exit {p.ExitCode}). {err}{outp}".Trim());
+            {
+                var msg = $"{err}{outp}".Trim();
+                // A parse/unknown-type failure is bad input, not a broken mmdc; class
+                // it as syntax so the Add path surfaces it (and does not fall back).
+                if (LooksLikeSyntaxError(msg))
+                    throw new MermaidSyntaxException(
+                        $"mermaid syntax error: {msg} "
+                        + "(fix the mermaid source, or use render=native for the built-in subset).");
+                throw new InvalidOperationException($"mmdc failed (exit {p.ExitCode}). {msg}".Trim());
+            }
             return outPath;
         }
         finally { try { File.Delete(inPath); } catch { /* best effort */ } }
@@ -186,14 +223,25 @@ public static class MermaidImageRenderer
             var dom = HtmlScreenshot.DumpDom(htmlPath)
                 ?? throw new InvalidOperationException("headless browser produced no output.");
 
+            // The <title> is the AUTHORITATIVE outcome — not the presence of an <svg>.
+            // On a syntax error mermaid.parse() rejects (we capture the message) but
+            // STILL injects its red "Syntax error" bomb graphic into the DOM anyway
+            // (suppressErrorRendering doesn't stop it). So a viewBox is present even on
+            // failure; keying off the svg would screenshot the bomb and "succeed".
+            // Trust the title: MMDREADY = real render, MMDSYNTAX = bad input, else infra.
+            if (dom.Contains("<title>MMDSYNTAX</title>", StringComparison.Ordinal))
+                throw new MermaidSyntaxException(
+                    "mermaid syntax error: " + ExtractMermaidMessage(dom)
+                    + "\n(fix the mermaid source, or use render=native for the built-in subset).");
+            if (!dom.Contains("<title>MMDREADY</title>", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    dom.Contains("<title>MMDERR</title>", StringComparison.Ordinal)
+                    ? "mermaid failed to render: " + ExtractMermaidMessage(dom)
+                    : "mermaid produced no diagram (mermaid.js failed to load or the render timed out).");
+
             var (w, h) = ParseSvgSize(dom);
             if (w <= 0 || h <= 0)
-            {
-                var err = Regex.Match(dom, @"<title>MMDERR:([^<]*)</title>");
-                throw new InvalidOperationException(err.Success
-                    ? $"mermaid failed to render: {err.Groups[1].Value.Trim()}"
-                    : "mermaid produced no diagram (unsupported syntax or mermaid.js failed to load).");
-            }
+                throw new InvalidOperationException("mermaid rendered but produced no measurable svg viewBox.");
 
             var pngPath = Path.ChangeExtension(htmlPath, ".png");
             if (!HtmlScreenshot.CaptureChromeSized(htmlPath, pngPath,
@@ -248,15 +296,35 @@ public static class MermaidImageRenderer
             + "<style>html,body{margin:0;padding:0;background:transparent;font-size:0}"
             + "#d{display:inline-block}#d svg{display:block}</style>"
             + $"<script src=\"{jsRef}\"></script></head>"
-            + "<body><div id=\"d\" class=\"mermaid\"></div><script>"
-            + $"const src=atob(\"{b64}\");"
+            // Hidden sink for a failure message. mermaid's parse error is multi-line
+            // with an aligned caret ('^') under the offending column; document.title
+            // would flatten the newlines and misalign the caret, so carry the verbatim
+            // message here (a <pre> preserves whitespace) and use the title only as the
+            // one-word outcome SIGNAL (MMDREADY / MMDSYNTAX / MMDERR).
+            + "<body><pre id=\"mmderr\" style=\"display:none\"></pre>"
+            + "<div id=\"d\" class=\"mermaid\"></div><script>"
+            // atob yields a BYTE string (one Latin-1 char per byte); decode those
+            // bytes back as UTF-8 so CJK/emoji in the mermaid source survive. A bare
+            // atob() would render "提交" as mojibake ("æ¤").
+            + $"const src=new TextDecoder().decode(Uint8Array.from(atob(\"{b64}\"),c=>c.charCodeAt(0)));"
             + "document.getElementById('d').textContent=src;"
             + "window.addEventListener('load',async()=>{try{"
             // htmlLabels:false → mermaid emits real SVG <text> instead of <foreignObject>
             // (HTML), which Office's SVG renderer cannot display — otherwise every
             // node/label comes out blank. securityLevel:loose allows the run.
+            // suppressErrorRendering: on invalid syntax mermaid otherwise silently
+            // renders a red "Syntax error in text" bomb graphic and returns success —
+            // we would screenshot the bomb and embed it. With this off, run() throws.
             + "mermaid.initialize({startOnLoad:false,securityLevel:'loose',htmlLabels:false,"
-            + "flowchart:{htmlLabels:false},class:{htmlLabels:false}});"
+            + "flowchart:{htmlLabels:false},class:{htmlLabels:false},suppressErrorRendering:true});"
+            // Validate first: mermaid.parse() throws a precise, line-numbered error
+            // ('Parse error on line N: … Expecting X, got Y') without touching the DOM.
+            // Stamp it under a DISTINCT title so the host tells a user syntax error
+            // (surface it, let the agent fix the source) apart from an infra failure
+            // (browser/mermaid.js problem — fall back to the native synthesizer).
+            + "try{await mermaid.parse(src);}catch(pe){"
+            + "document.getElementById('mmderr').textContent=(pe&&pe.message?pe.message:String(pe));"
+            + "document.title='MMDSYNTAX';return;}"
             + "await mermaid.run({nodes:[document.getElementById('d')]});"
             // Tighten the SVG to its REAL content bounds. mermaid's own viewBox
             // overshoots for some types (sequence diagrams reserve far more width/
@@ -273,8 +341,25 @@ public static class MermaidImageRenderer
             + "s.setAttribute('width',w);s.setAttribute('height',h);"
             + "s.style.maxWidth=w+'px';s.style.width=w+'px';s.style.height=h+'px';}}catch(e){}"
             + "document.title='MMDREADY';"
-            + "}catch(e){document.title='MMDERR:'+(e&&e.message?e.message:e);}});"
+            + "}catch(e){document.getElementById('mmderr').textContent="
+            + "(e&&e.message?e.message:String(e));document.title='MMDERR';}});"
             + "</script></body></html>";
+    }
+
+    /// <summary>Pull the verbatim failure message out of the hidden &lt;pre id="mmderr"&gt;
+    /// in the dumped DOM. The &lt;pre&gt; preserves mermaid's newlines (so its caret '^'
+    /// stays aligned under the offending column); the browser HTML-escapes the text, so
+    /// undo the common entities WITHOUT collapsing whitespace. Falls back to a generic
+    /// note if the sink is missing.</summary>
+    private static string ExtractMermaidMessage(string dom)
+    {
+        var m = Regex.Match(dom, "<pre id=\"mmderr\"[^>]*>(.*?)</pre>", RegexOptions.Singleline);
+        if (!m.Success || string.IsNullOrWhiteSpace(m.Groups[1].Value))
+            return "(no detail reported)";
+        var s = m.Groups[1].Value
+            .Replace("&amp;", "&").Replace("&lt;", "<").Replace("&gt;", ">")
+            .Replace("&quot;", "\"").Replace("&#39;", "'");
+        return s.Trim('\n', '\r', ' ', '\t');
     }
 
     /// <summary>Read the rendered diagram's CSS-pixel size from the svg viewBox in

@@ -334,6 +334,70 @@ officecli add formulas.docx /body --type equation \
 
 **Features:** `\oint`, `\oiint`, `\oiiint` (n-ary contour integrals), `\max`, `\min`, `\sup`, `\inf`, `\limsup`, `\liminf`, `\argmax`, `\argmin`, `\det`, `\gcd`, `\Pr` (limit-style operators with under-limits), `\limits`, `\nolimits` (limits placement), `\prod` (n-ary product), `\div`, `\ast`, `\star`, `\circ`, `\oplus`, `\ominus`, `\otimes`, `\odot`, `\bullet` (binary operators), `\leftarrow`, `\uparrow`, `\downarrow`, `\leftrightarrow`, `\Rightarrow`, `\Leftarrow`, `\Leftrightarrow`, `\gets`, `\implies` (arrows), `\boldsymbol`, `\mathit` (math fonts), `\underset` (under-set), `\neq`, `\sim`, `\subset`, `\supset`, `\lor`, `\neg`, `\wedge`, `\vee`, `\parallel` (relations/logic), `\varnothing`, `\complement` (sets), `\cos`, `\tan`, `\ln` (trig/functions), `{a \over b}` (legacy fraction syntax)
 
+## XI. Full Symbol & Environment Coverage
+
+This section exhaustively exercises the remaining parser-supported commands —
+Greek variants, the full relation/negated-relation set, extended arrows, a large
+miscellaneous-symbol block, every math font family, and the remaining math
+environments — so nearly the entire command table is demonstrated at least once.
+
+```bash
+# 68. Greek Variants and Extra Letters
+officecli add formulas.docx /body --type equation \
+  --prop 'formula=\chi, \iota, \kappa, \omega, \tau, \upsilon, \varepsilon, \varphi, \varpi, \varrho, \varsigma, \vartheta, \varkappa, \digamma'
+
+# 69. Relation Symbols
+officecli add formulas.docx /body --type equation \
+  --prop 'formula=a \cong b \simeq c \asymp d \doteq e, \quad f \propto g, \quad x \prec y \succ z, \quad p \preceq q \succeq r, \quad m \ll n \gg k, \quad \Gamma \models \phi \vdash \psi \dashv \chi \Vdash \omega, \quad u \perp v, \quad \top, \quad a \ni b, \quad S \sqsubset T \sqsubseteq U \sqsupset V \sqsupseteq W, \quad A \subsetneq B \supsetneq C'
+
+# 70. Negated Relations
+officecli add formulas.docx /body --type equation \
+  --prop 'formula=a \nleq b, \quad c \ngeq d, \quad e \nmid f, \quad A \nsubseteq B, \quad C \nsupseteq D, \quad \nexists x'
+
+# 71. Extended Arrows
+officecli add formulas.docx /body --type equation \
+  --prop 'formula=a \longleftarrow b \longrightarrow c \longleftrightarrow d, \quad x \longmapsto y, \quad e \hookleftarrow f \hookrightarrow g, \quad p \twoheadrightarrow q \rightsquigarrow r, \quad u \leftharpoonup v \leftharpoondown w \rightharpoonup s \rightharpoondown t, \quad \nearrow \searrow \swarrow \nwarrow, \quad \alpha \curvearrowleft \beta \curvearrowright \gamma, \quad P \impliedby Q'
+
+# 72. Miscellaneous Symbols
+officecli add formulas.docx /body --type equation \
+  --prop 'formula=\aleph, \beth, \gimel, \daleth, \wp, \Re, \Im, \Sigma, \quad \angle, \measuredangle, \sphericalangle, \triangle, \triangleleft, \triangleright, \quad \square, \blacksquare, \Diamond, \diamond, \diamondsuit, \clubsuit, \heartsuit, \spadesuit, \quad \flat, \sharp, \natural, \dagger, \ddagger, \bigstar, \quad a \amalg b \uplus c \sqcap d \sqcup e \wr f, \quad x \bowtie y \frown z \smile w, \quad p \mp q, \quad \bigtriangledown'
+
+# 73. Math Font Families
+officecli add formulas.docx /body --type equation \
+  --prop 'formula=\mathfrak{ABCDabcd} \quad \mathsf{ABCDabcd} \quad \mathtt{ABCDabcd} \quad \textbf{ABCDabcd} \quad \textit{ABCDabcd} \quad \textsf{ABCDabcd} \quad \texttt{ABCDabcd}'
+
+# 74. Environments — Bmatrix and Vmatrix
+officecli add formulas.docx /body --type equation \
+  --prop 'formula=\begin{Bmatrix} a & b \\ c & d \end{Bmatrix} \quad \begin{Vmatrix} a & b \\ c & d \end{Vmatrix}'
+
+# 75. Environments — smallmatrix and array (colspec)
+officecli add formulas.docx /body --type equation \
+  --prop 'formula=\left(\begin{smallmatrix} 1 & 0 \\ 0 & 1 \end{smallmatrix}\right) \quad \begin{array}{cc} x & y \\ z & w \end{array}'
+
+# 76. Environments — aligned and align (multi alignment points)
+officecli add formulas.docx /body --type equation \
+  --prop 'formula=\begin{aligned} a &= b \\ c &= d \end{aligned} \qquad \begin{align} a &= b & c &= d \\ e &= f & g &= h \end{align}'
+
+# 77. Environments — gather, split, and substack
+officecli add formulas.docx /body --type equation \
+  --prop 'formula=\begin{gather} x = 1 \\ y = 2 \end{gather} \qquad \begin{split} a &= b + c \\ &= d \end{split} \qquad \sum_{\substack{i=1 \\ j=1}}^{n} a_{ij}'
+```
+
+**Features:**
+
+| Group | Commands |
+|-------|----------|
+| Greek variants | `\chi` `\iota` `\kappa` `\omega` `\tau` `\upsilon` `\varepsilon` `\varphi` `\varpi` `\varrho` `\varsigma` `\vartheta` `\varkappa` `\digamma` |
+| Relations | `\cong` `\simeq` `\asymp` `\doteq` `\propto` `\prec` `\succ` `\preceq` `\succeq` `\ll` `\gg` `\models` `\vdash` `\dashv` `\perp` `\top` `\ni` `\sqsubset` `\sqsubseteq` `\sqsupset` `\sqsupseteq` `\subsetneq` `\supsetneq` `\Vdash` |
+| Negated relations | `\nleq` `\ngeq` `\nmid` `\nsubseteq` `\nsupseteq` `\nexists` |
+| Extended arrows | `\longleftarrow` `\longrightarrow` `\longleftrightarrow` `\longmapsto` `\hookleftarrow` `\hookrightarrow` `\twoheadrightarrow` `\rightsquigarrow` `\leftharpoonup` `\leftharpoondown` `\rightharpoonup` `\rightharpoondown` `\nearrow` `\searrow` `\swarrow` `\nwarrow` `\curvearrowleft` `\curvearrowright` `\impliedby` |
+| Misc symbols | `\aleph` `\beth` `\gimel` `\daleth` `\wp` `\Re` `\Im` `\Sigma` `\angle` `\measuredangle` `\sphericalangle` `\triangle` `\triangleleft` `\triangleright` `\square` `\blacksquare` `\Diamond` `\diamond` `\diamondsuit` `\clubsuit` `\heartsuit` `\spadesuit` `\flat` `\sharp` `\natural` `\dagger` `\ddagger` `\bigstar` `\amalg` `\uplus` `\sqcap` `\sqcup` `\wr` `\bowtie` `\frown` `\smile` `\mp` `\bigtriangledown` |
+| Math font families | `\mathfrak` `\mathsf` `\mathtt` `\textbf` `\textit` `\textsf` `\texttt` |
+| Environments | `Bmatrix` `Vmatrix` `smallmatrix` `array` (colspec) `aligned` `align` (multi-point) `gather` `split` `substack` |
+
+> Note: `\nparallel` (LaTeX "not parallel") is **not** supported by the current
+> parser and is intentionally omitted.
+
 ## Complete Feature Coverage
 
 | Feature | Section |
@@ -360,6 +424,12 @@ officecli add formulas.docx /body --type equation \
 | Additional math fonts (`\boldsymbol`, `\mathit`), over/under-set (`\underset`) | X |
 | Relations/logic/sets (`\neq`, `\sim`, `\subset`, `\supset`, `\lor`, `\neg`, `\wedge`, `\vee`, `\parallel`, `\varnothing`, `\complement`) | X |
 | Trig/functions (`\cos`, `\tan`, `\ln`), legacy fraction (`{a \over b}`) | X |
+| Greek variants (`\chi`, `\varepsilon`, `\varphi`, `\varkappa`, `\digamma`, …) | XI |
+| Full relation set (`\cong`, `\simeq`, `\prec`, `\succ`, `\sqsubseteq`, `\Vdash`, …) and negated relations (`\nleq`, `\nmid`, `\nsubseteq`, `\nexists`, …) | XI |
+| Extended arrows (`\longmapsto`, `\hookrightarrow`, `\twoheadrightarrow`, `\rightsquigarrow`, harpoons, diagonals, `\curvearrowleft`, `\impliedby`) | XI |
+| Miscellaneous symbols (`\aleph`, `\wp`, `\Re`, `\angle`, `\blacksquare`, suits, `\dagger`, `\bowtie`, `\bigtriangledown`, …) | XI |
+| Math font families (`\mathfrak`, `\mathsf`, `\mathtt`, `\textbf`, `\textit`, `\textsf`, `\texttt`) | XI |
+| Extra environments (`Bmatrix`, `Vmatrix`, `smallmatrix`, `array`, `aligned`, `align`, `gather`, `split`, `substack`) | XI |
 
 ## Inspect the Generated File
 

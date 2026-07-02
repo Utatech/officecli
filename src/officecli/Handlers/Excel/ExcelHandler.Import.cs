@@ -81,6 +81,7 @@ public partial class ExcelHandler
         foreach (var er in existingRows)
             rowByIndex[er.RowIndex!.Value] = er;
         int exCursor = 0; // points at the first existing row with index > last processed
+        var importedFormulaCells = new List<Cell>();
 
         for (int r = 0; r < rows.Count; r++)
         {
@@ -142,7 +143,23 @@ public partial class ExcelHandler
                     cell.DataType = null;
                 }
                 SetCellValueWithTypeDetection(cell, fields[c]);
+                if (cell.CellFormula != null && cell.CellValue == null)
+                    importedFormulaCells.Add(cell);
             }
+        }
+
+        // CONSISTENCY(cell-formula-cache): `set formula=` evaluates and caches
+        // the result (t= type + <v>), but the import path used to write a bare
+        // <f> — a dump→import replay of a formula cell silently dropped the
+        // cached value and its Error/Boolean type, so Get on the replayed file
+        // disagreed with the source. Evaluate once after the whole block is in
+        // (handles forward references within the imported range).
+        if (importedFormulaCells.Count > 0)
+        {
+            var importEvaluator = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
+            foreach (var fc in importedFormulaCells)
+                WriteFormulaResultToCell(fc, importEvaluator.TryEvaluateFull(fc.CellFormula!.Text ?? ""));
+            EnsureFullCalcOnLoad();
         }
 
         InvalidateRowIndex(sheetData);

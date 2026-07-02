@@ -283,6 +283,21 @@ public static partial class ExcelBatchEmitter
         // 2. Value baseline: CSV import blocks + corrective typed sets.
         var rows = xl.GetDumpRowNodes(sheetName);
 
+        // Cells whose shared-string index cannot be resolved (malformed
+        // source: missing/truncated sharedStrings part) would emit their
+        // INDEX as the value — warn and drop them instead of exporting
+        // confidently-wrong data. Real Excel refuses such files outright.
+        foreach (var rowNode in rows)
+        {
+            var unresolved = rowNode.Children?
+                .Where(c => c.Format.ContainsKey("__unresolvedSst")).ToList();
+            if (unresolved == null || unresolved.Count == 0) continue;
+            foreach (var c in unresolved)
+                warnings.Add(new UnsupportedWarning("cell", c.Path ?? sheetPath,
+                    "shared-string index has no entry in the sharedStrings part (malformed source); the cell value cannot be resolved and was skipped"));
+            rowNode.Children!.RemoveAll(c => c.Format.ContainsKey("__unresolvedSst"));
+        }
+
         // Strip cells inside pivot-table locations from EVERY pass (values,
         // corrective sets, styles, links): they are derived render output
         // that `add pivottable` regenerates on replay — importing them as

@@ -55,6 +55,12 @@ public partial class ExcelHandler
         // FormulaEvaluator per formula cell when none is passed, which is
         // O(cells × sheet-size) on formula-heavy sheets.
         var eval = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
+        // For unresolved-shared-string detection: a cell with t="s" whose
+        // index has no entry (missing/truncated sharedStrings part) would
+        // otherwise surface its INDEX as the cell text — confidently-wrong
+        // data. Mark such cells so the emitter warns and skips them.
+        var sstCount = _doc.WorkbookPart?.SharedStringTablePart?.SharedStringTable?
+            .Elements<SharedStringItem>().Count() ?? 0;
         var seenRowIndices = new HashSet<uint>();
         foreach (var row in sheetData.Elements<Row>())
         {
@@ -98,6 +104,10 @@ public partial class ExcelHandler
                 var hasStyle = cell.StyleIndex != null && cell.StyleIndex.Value != 0;
                 if (!hasContent && !hasStyle) continue;
                 var cellNode = CellToNode(sheetName, cell, worksheet, eval);
+                if (cell.DataType?.Value == CellValues.SharedString
+                    && (!int.TryParse(cell.CellValue?.Text, out var sstIdx)
+                        || sstIdx < 0 || sstIdx >= sstCount))
+                    cellNode.Format["__unresolvedSst"] = true;
                 var raw = cell.CellValue?.Text;
                 if (!string.IsNullOrEmpty(raw))
                     cellNode.Format["__raw"] = raw;

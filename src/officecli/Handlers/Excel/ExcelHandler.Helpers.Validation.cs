@@ -25,13 +25,25 @@ public partial class ExcelHandler
             System.Text.RegularExpressions.RegexOptions.Compiled
             | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
+    // Whole-column (A:A, B:XFD) and whole-row (1:1, 2:10) tokens are legal
+    // sqref members — dump reads them from real files, so add/replay must
+    // accept them too (a column-wide CF rule could not be round-tripped).
+    private static readonly System.Text.RegularExpressions.Regex SqrefWholeToken =
+        new(@"^(\$?[A-Z]+:\$?[A-Z]+|\$?[0-9]+:\$?[0-9]+)$",
+            System.Text.RegularExpressions.RegexOptions.Compiled
+            | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
     internal static string ValidateSqref(string value, string field)
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException($"Invalid {field} '{value}': empty A1 range.");
-        if (!SqrefShape.IsMatch(value.Trim()))
+        var trimmed = value.Trim();
+        var ok = trimmed
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .All(tok => SqrefShape.IsMatch(tok) || SqrefWholeToken.IsMatch(tok));
+        if (!ok)
             throw new ArgumentException(
-                $"Invalid {field} '{value}': expected an A1 reference (e.g. 'A1', 'A1:D10', 'A1 B2:C5').");
+                $"Invalid {field} '{value}': expected an A1 reference (e.g. 'A1', 'A1:D10', 'A:A', '1:3', 'A1 B2:C5').");
         return value;
     }
 

@@ -251,14 +251,16 @@ public static partial class ExcelBatchEmitter
             // single placeholder sheet is claimed by renaming. `add sheet`
             // would refuse the duplicate name when the source's first sheet is
             // literally "Sheet1", and appending would leave the placeholder
-            // dangling — rename sidesteps both.
-            if (!string.Equals(sheetName, "Sheet1", StringComparison.Ordinal))
-                items.Add(new BatchItem
-                {
-                    Command = "set",
-                    Path = "/sheet[1]",
-                    Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["name"] = sheetName },
-                });
+            // dangling — rename sidesteps both. The rename is emitted even
+            // when the name is already "Sheet1" (a no-op on replay): it makes
+            // the dump self-describing, so a find/replace sheet rename over
+            // the batch JSON (dump-as-template workflow) keeps working.
+            items.Add(new BatchItem
+            {
+                Command = "set",
+                Path = "/sheet[1]",
+                Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["name"] = sheetName },
+            });
         }
         else
         {

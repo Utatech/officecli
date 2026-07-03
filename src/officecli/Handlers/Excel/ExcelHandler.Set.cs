@@ -204,6 +204,24 @@ public partial class ExcelHandler
                 brkSetMatch.Groups[1].Value.Equals("rowbreak", StringComparison.OrdinalIgnoreCase),
                 int.Parse(brkSetMatch.Groups[2].Value), properties);
 
+        // CONSISTENCY(axis-ref-compat): accept Excel-style whole-column/row
+        // references (B:B, B:D, 1:1, 2:5) as input aliases — expand to the
+        // canonical col[X]/row[N] segments and apply per column/row, the way
+        // range set (A1:D1) applies per cell.
+        if (TryExpandAxisRef(cellRef) is { } axisSegments)
+        {
+            var axisUnsupported = new List<string>();
+            foreach (var seg in axisSegments)
+            {
+                var segResult = Set($"/{sheetName}/{seg}", properties);
+                // Intersect: a prop is unsupported only if no column/row took it.
+                axisUnsupported = axisSegments[0] == seg
+                    ? segResult
+                    : axisUnsupported.Intersect(segResult, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            return axisUnsupported;
+        }
+
         // Handle /SheetName/col[X] where X is a column letter (A) or numeric index (1)
         var colMatch = Regex.Match(cellRef, @"^col\[([A-Za-z0-9]+)\]$", RegexOptions.IgnoreCase);
         if (colMatch.Success)
@@ -248,13 +266,6 @@ public partial class ExcelHandler
                 return SetRange(worksheet, cellRef.ToUpperInvariant(), properties);
             }
         }
-
-        // Excel-style whole-column/row references (B:B, 1:1) are not paths —
-        // point at the col[X]/row[N] syntax instead of the bare generic-XML
-        // not-found. CONSISTENCY(axis-ref-hint): same hint in Query.
-        if (SuggestAxisRefSyntax(cellRef) is { } axisHint)
-            throw new ArgumentException(
-                $"Element not found: {cellRef}. Whole-column/row references use bracket syntax — try /{sheetName}/{axisHint}.");
 
         // Check if path is a cell reference or generic XML path
         var firstPart = cellRef.Split('/')[0].Split('[')[0];

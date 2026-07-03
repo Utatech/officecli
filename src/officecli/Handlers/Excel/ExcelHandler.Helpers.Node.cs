@@ -63,6 +63,19 @@ public partial class ExcelHandler
         if (spkGroup.Last?.Value == true) node.Format["lastPoint"] = true;
         if (spkGroup.Negative?.Value == true) node.Format["negative"] = true;
 
+        // Marker colors — Add persists these into the x14 group; without the
+        // readback they were invisible to Get and dropped by dump round-trips.
+        if (spkGroup.HighMarkerColor?.Rgb?.Value is string spkHiMc)
+            node.Format["highMarkerColor"] = ParseHelpers.FormatHexColor(spkHiMc);
+        if (spkGroup.LowMarkerColor?.Rgb?.Value is string spkLoMc)
+            node.Format["lowMarkerColor"] = ParseHelpers.FormatHexColor(spkLoMc);
+        if (spkGroup.FirstMarkerColor?.Rgb?.Value is string spkFiMc)
+            node.Format["firstMarkerColor"] = ParseHelpers.FormatHexColor(spkFiMc);
+        if (spkGroup.LastMarkerColor?.Rgb?.Value is string spkLaMc)
+            node.Format["lastMarkerColor"] = ParseHelpers.FormatHexColor(spkLaMc);
+        if (spkGroup.MarkersColor?.Rgb?.Value is string spkMkMc)
+            node.Format["markersColor"] = ParseHelpers.FormatHexColor(spkMkMc);
+
         // Line weight
         if (spkGroup.LineWeight?.HasValue == true)
             node.Format["lineWeight"] = spkGroup.LineWeight.Value;

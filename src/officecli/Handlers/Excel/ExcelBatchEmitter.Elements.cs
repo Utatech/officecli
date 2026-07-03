@@ -251,7 +251,7 @@ public static partial class ExcelBatchEmitter
                 "errorStyle",
             })
                 CopyString(dv, key, props, key);
-            foreach (var key in new[] { "allowBlank", "showError", "showInput" })
+            foreach (var key in new[] { "allowBlank", "showError", "showInput", "inCellDropdown" })
             {
                 // Add defaults each of these to true; carry explicit values
                 // either way so the OOXML attribute round-trips exactly.
@@ -387,12 +387,17 @@ public static partial class ExcelBatchEmitter
             CopyString(spk, "color", props, "color");
             CopyString(spk, "negativeColor", props, "negativeColor");
             CopyBool(spk, "markers", props, "markers");
-            CopyBool(spk, "highPoint", props, "highpoint");
-            CopyBool(spk, "lowPoint", props, "lowpoint");
-            CopyBool(spk, "firstPoint", props, "firstpoint");
-            CopyBool(spk, "lastPoint", props, "lastpoint");
+            CopyBool(spk, "highPoint", props, "highPoint");
+            CopyBool(spk, "lowPoint", props, "lowPoint");
+            CopyBool(spk, "firstPoint", props, "firstPoint");
+            CopyBool(spk, "lastPoint", props, "lastPoint");
             CopyBool(spk, "negative", props, "negative");
-            CopyValue(spk, "lineWeight", props, "lineweight");
+            CopyString(spk, "highMarkerColor", props, "highMarkerColor");
+            CopyString(spk, "lowMarkerColor", props, "lowMarkerColor");
+            CopyString(spk, "firstMarkerColor", props, "firstMarkerColor");
+            CopyString(spk, "lastMarkerColor", props, "lastMarkerColor");
+            CopyString(spk, "markersColor", props, "markersColor");
+            CopyValue(spk, "lineWeight", props, "lineWeight");
             if (!props.ContainsKey("location") || !props.ContainsKey("dataRange"))
             {
                 warnings.Add(new UnsupportedWarning("sparkline", spk.Path ?? sheetPath,

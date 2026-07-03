@@ -314,6 +314,13 @@ public partial class PowerPointHandler
             if (name.Length == 0 || fmla.Length == 0)
                 throw new ArgumentException(
                     $"Invalid adj spec '{entry}'. Both name and formula must be non-empty.");
+            // Bare numeric convenience: "adj:25000" means "adj:val 25000".
+            if (long.TryParse(fmla, out _)) fmla = $"val {fmla}";
+            // Validate the guide-formula grammar. fmla is xs:string in the
+            // schema, so our validator stays green on garbage — but real
+            // PowerPoint refuses the file (0x80070570) when fmla isn't a
+            // well-formed ECMA-376 guide formula.
+            ValidateGuideFormula(entry, fmla);
             // R18 BUG A: PowerPoint validates each <a:gd name="…"> against the
             // names the preset's own definition declares; an unknown name (e.g.
             // "adj1" on a single-handle preset whose guide is literally "adj")
@@ -342,6 +349,27 @@ public partial class PowerPointHandler
         // the user supplied, in their order.
         foreach (var name in orderSupplied)
             avLst.AppendChild(new Drawing.ShapeGuide { Name = name, Formula = supplied[name] });
+    }
+
+    // ECMA-376 §20.1.9.11 guide formula: an operator followed by numeric or
+    // guide-name arguments (e.g. "val 25000", "*/ w 1 2", "+- adj 0 100000").
+    private static readonly HashSet<string> GuideFormulaOps = new(StringComparer.Ordinal)
+    {
+        "val", "*/", "+-", "+/", "?:", "abs", "at2", "cat2", "cos",
+        "max", "min", "mod", "pin", "sat2", "sin", "sqrt", "tan",
+    };
+
+    private static void ValidateGuideFormula(string entry, string fmla)
+    {
+        var tokens = fmla.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var ok = tokens.Length >= 2 && GuideFormulaOps.Contains(tokens[0])
+            && tokens.Skip(1).All(t =>
+                long.TryParse(t, out _)
+                || System.Text.RegularExpressions.Regex.IsMatch(t, "^[A-Za-z_][A-Za-z0-9_]*$"));
+        if (!ok)
+            throw new ArgumentException(
+                $"Invalid adj formula in '{entry}'. Expected an ECMA-376 guide formula " +
+                "such as 'val 25000' (or a bare number), got '" + fmla + "'.");
     }
 
     /// <summary>

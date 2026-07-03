@@ -1808,6 +1808,16 @@ public partial class PowerPointHandler
         // AppendMotionPathAnimation; preset (entrance/exit/emphasis) snapshots
         // route through ApplyShapeAnimation. Both append to the MainSequence
         // ChildTimeNodeList in original order so animation[K] indexing holds.
+        // CONSISTENCY(validate-before-mutate): a bad edit (effect=badname) used
+        // to surface only when re-applying snapshot K — AFTER the wipe below —
+        // destroying every animation on the shape and leaving a half-built
+        // timing tree. Pre-validate all non-motion snapshots' effect names.
+        foreach (var preSnap in snapshots)
+        {
+            if (preSnap.TryGetValue("class", out var preCls)
+                && preCls.Equals("motion", StringComparison.OrdinalIgnoreCase)) continue;
+            ValidateAnimEffectName(BuildAnimValueFromProps(preSnap));
+        }
         var shapeId = GetAnimationTargetSpId(targetEl);
         if (shapeId.HasValue)
         {

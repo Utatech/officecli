@@ -2578,6 +2578,19 @@ public partial class WordHandler
         var wmSize = properties.GetValueOrDefault("size", "1pt");
         if (!wmSize.EndsWith("pt")) wmSize += "pt";
         var wmRotation = properties.GetValueOrDefault("rotation", "315");
+        // Normalize into 0-360 as the schema help promises (-45 → 315); a
+        // non-numeric value is rejected instead of landing verbatim in the
+        // VML style string.
+        {
+            if (!double.TryParse(wmRotation,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var wmRotDeg))
+                throw new ArgumentException(
+                    $"Invalid 'rotation' value: '{wmRotation}'. Expected a number in degrees (e.g. 315 or -45).");
+            wmRotDeg %= 360;
+            if (wmRotDeg < 0) wmRotDeg += 360;
+            wmRotation = wmRotDeg.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        }
         var wmOpacity = properties.TryGetValue("opacity", out var wmoVal) ? wmoVal : ".5";
         var wmWidth = properties.GetValueOrDefault("width", "415pt");
         var wmHeight = properties.GetValueOrDefault("height", "207.5pt");

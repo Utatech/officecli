@@ -1885,6 +1885,11 @@ public partial class PowerPointHandler
         var shapeId = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value
             ?? throw new ArgumentException("Shape has no ID");
 
+        // CONSISTENCY(validate-before-mutate): NormaliseMotionPath throws on
+        // garbage paths — run it before EnsureTimingTree so a rejected d=
+        // doesn't leave an empty timing skeleton that fails schema validation.
+        var normalisedPath = NormaliseMotionPath(pathString);
+
         EnsureTimingTree(slide, out var mainSeqCTn, out var bldLst);
         var timing = slide.GetFirstChild<Timing>()!;
         var nextId = GetMaxTimingId(timing) + 1;
@@ -1900,7 +1905,7 @@ public partial class PowerPointHandler
 
         var motionGroup = BuildMotionPathGroup(
             shapeId.ToString(), durationMs, nodeType, grpId, outerDelay,
-            NormaliseMotionPath(pathString), ref nextId,
+            normalisedPath, ref nextId,
             delayMs, easingAccel, easingDecel);
 
         if (trigger == AnimTrigger.WithPrevious)
@@ -1940,6 +1945,32 @@ public partial class PowerPointHandler
                 GroupId = new UInt32Value((uint)grpId)
             });
         }
+    }
+
+    /// <summary>
+    /// Parse-only validation of an animation value string (effect name +
+    /// class tokens) — throws the same "Unknown animation effect" error
+    /// ApplyShapeAnimation would, WITHOUT touching the timing tree. Used by
+    /// the snapshot-replay set path to reject a bad edit before the existing
+    /// chain is wiped (CONSISTENCY(validate-before-mutate)).
+    /// </summary>
+    internal static void ValidateAnimEffectName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        if (value.Equals("none", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("false", StringComparison.OrdinalIgnoreCase)) return;
+        var parts = value.Split('-');
+        var effectName = parts[0].ToLowerInvariant();
+        var presetClass = TimeNodePresetClassValues.Entrance;
+        foreach (var raw in parts.Skip(1))
+        {
+            var seg = raw.ToLowerInvariant();
+            if (seg is "entrance" or "in" or "entr") presetClass = TimeNodePresetClassValues.Entrance;
+            else if (seg is "exit" or "out") presetClass = TimeNodePresetClassValues.Exit;
+            else if (seg is "emphasis" or "emph") presetClass = TimeNodePresetClassValues.Emphasis;
+        }
+        if (TryGetEffectTemplate(effectName, presetClass) == null)
+            GetAnimPreset(effectName, presetClass); // throws on unknown effect
     }
 
     private static string NormaliseMotionPath(string path)

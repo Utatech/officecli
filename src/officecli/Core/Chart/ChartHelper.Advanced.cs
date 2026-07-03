@@ -497,6 +497,21 @@ internal static partial class ChartHelper
 
         var typeList = comboTypes.Split(',').Select(t => t.Trim().ToLowerInvariant()).ToArray();
 
+        // Validate every token BEFORE any mutation: unknown tokens used to fall
+        // through to the default LineChart arm, silently coercing garbage
+        // (combotypes=asdf,qwer) into line,line — the only mini-language prop
+        // that accepted typos. Also keeps the rebuild atomic on bad input.
+        foreach (var t in typeList)
+        {
+            var baseToken = t.EndsWith("percentstacked", StringComparison.Ordinal) ? t[..^14]
+                : t.EndsWith("stacked", StringComparison.Ordinal) ? t[..^7]
+                : t;
+            if (baseToken is not ("bar" or "column" or "col" or "line" or "area" or "scatter"))
+                throw new ArgumentException(
+                    $"Invalid comboTypes token '{t}'. Expected bar/column/line/area/scatter, " +
+                    "optionally with a stacked/percentstacked suffix (e.g. 'column,line' or 'columnstacked,line').");
+        }
+
         // Read all existing series data
         var allSer = plotArea.Descendants<OpenXmlCompositeElement>()
             .Where(e => e.LocalName == "ser").ToList();

@@ -52,9 +52,21 @@ public partial class WordHandler
                                 @"opacity=""[^""]*""", $@"opacity=""{value}""");
                             break;
                         case "rotation":
+                        {
+                            // Normalize into 0-360 (schema: -45 → 315) and
+                            // reject non-numeric input; mirrors AddWatermark.
+                            if (!double.TryParse(value,
+                                    System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo.InvariantCulture, out var wmSetRot))
+                                throw new ArgumentException(
+                                    $"Invalid 'rotation' value: '{value}'. Expected a number in degrees (e.g. 315 or -45).");
+                            wmSetRot %= 360;
+                            if (wmSetRot < 0) wmSetRot += 360;
+                            var wmSetRotStr = wmSetRot.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
                             xml = System.Text.RegularExpressions.Regex.Replace(xml,
-                                @"rotation\s*:\s*-?\d+(?:\.\d+)?", $@"rotation:{value}");
+                                @"rotation\s*:\s*-?\d+(?:\.\d+)?", $@"rotation:{wmSetRotStr}");
                             break;
+                        }
                         case "size":
                             // BUG-R36-B3: font-size on the v:textpath. Accept bare or pt-suffixed.
                             var sz = value.EndsWith("pt", StringComparison.OrdinalIgnoreCase) ? value : value + "pt";

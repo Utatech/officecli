@@ -824,7 +824,7 @@ public partial class PowerPointHandler
                 // unread when bulletRaw was present, warning a false
                 // unsupported_property on dump replays that emit both.
                 var hasShBulletRaw = properties.TryGetValue("bulletRaw", out var shBulletRaw) || properties.TryGetValue("bulletraw", out shBulletRaw);
-                var hasShList = properties.TryGetValue("list", out var listVal) || properties.TryGetValue("liststyle", out listVal);
+                var hasShList = properties.TryGetValue("list", out var listVal) || properties.TryGetValue("liststyle", out listVal) || properties.TryGetValue("bullet", out listVal);
                 if (hasShBulletRaw)
                 {
                     foreach (var para in newShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())

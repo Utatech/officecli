@@ -257,7 +257,7 @@ public partial class PowerPointHandler
                     pProps.Indent = (int)Math.Round(SpacingConverter.ParsePointsSigned(value) * EmuConverter.EmuPerPointF);
                     break;
                 }
-                case "liststyle" or "list":
+                case "liststyle" or "list" or "bullet":
                 {
                     // Handle here (not via the shape-level fall-through) for two
                     // reasons: the fall-through delegates a SINGLE-key dict, so

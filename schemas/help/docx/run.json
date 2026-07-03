@@ -2,7 +2,9 @@
   "$schema": "../_schema.json",
   "format": "docx",
   "element": "run",
-  "elementAliases": ["r"],
+  "elementAliases": [
+    "r"
+  ],
   "parent": "paragraph",
   "operations": {
     "add": true,
@@ -781,6 +783,21 @@
       "description": "individual rFonts @hAnsi slot readback. On Add/Set use the unified `font.latin` key (which writes both ascii + hAnsi).",
       "readback": "font family name",
       "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "aliases": [
+        "font.color"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop color=#FF0000",
+        "--prop color=accent1"
+      ],
+      "readback": "#RRGGBB uppercase, or bare scheme name (accent1). Theme-linked colors (e.g. hyperlink runs) read back as '#RRGGBB;themeColor=NAME' — the compound form is accepted back by add/set and preserves the w:themeColor linkage on round-trip.",
+      "enforcement": "strict"
     }
   }
 }

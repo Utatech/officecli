@@ -794,7 +794,7 @@ public partial class PowerPointHandler
                     break;
                 }
 
-                case "liststyle" or "list":
+                case "liststyle" or "list" or "bullet":
                 {
                     foreach (var para in shape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {

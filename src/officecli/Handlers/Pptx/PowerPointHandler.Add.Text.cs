@@ -279,7 +279,7 @@ public partial class PowerPointHandler
                 // and an else-if short-circuit left `list` unread — flagged as
                 // a false unsupported_property on every numbered-list replay.
                 var hasPBulletRaw = properties.TryGetValue("bulletRaw", out var pBulletRaw) || properties.TryGetValue("bulletraw", out pBulletRaw);
-                var hasPList = properties.TryGetValue("list", out var pList) || properties.TryGetValue("liststyle", out pList);
+                var hasPList = properties.TryGetValue("list", out var pList) || properties.TryGetValue("liststyle", out pList) || properties.TryGetValue("bullet", out pList);
                 if (hasPBulletRaw)
                     ApplyBulletRaw(pProps, pBulletRaw);
                 else if (hasPList)

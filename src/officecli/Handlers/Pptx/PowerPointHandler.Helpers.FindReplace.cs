@@ -271,6 +271,85 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
+    /// Apply run formatting to one or more explicit character ranges, reusing the
+    /// find format path's split-run engine with caller-supplied [start,end)
+    /// offsets. Offsets are relative to the concatenated run text of the resolved
+    /// scope (no inter-paragraph separator): a shape-scoped path spans all the
+    /// shape's paragraphs; a /paragraph[P]-scoped path is that paragraph only. A
+    /// range that straddles a paragraph boundary formats each covered paragraph's
+    /// slice; multiple disjoint ranges format each in turn — safe in any order
+    /// because format-only run splitting never shifts character offsets. Returns
+    /// the number of runs formatted.
+    /// </summary>
+    private int ProcessPptRange(string path, IReadOnlyList<(int Start, int End)> ranges, Dictionary<string, string> formatProps)
+    {
+        var (paragraphs, runIndex) = ResolvePptParagraphsForFindInternal(path);
+        if (runIndex.HasValue)
+            throw new ArgumentException(
+                "range addressing is not supported on a /run[K] path — apply range on a " +
+                "shape or /paragraph[P] path.");
+        if (paragraphs.Count == 0)
+            throw new ArgumentException($"No paragraphs found at path: {path}");
+
+        // Shape context for color resolution (anchored shape segment only), same
+        // as ProcessPptFind.
+        Shape? contextShape = null;
+        var shapeMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(\w+)\[(\d+)\](?:/|$)");
+        if (shapeMatch.Success && shapeMatch.Groups[2].Value is not ("table" or "notes"))
+        {
+            try
+            {
+                var (_, shape) = ResolveShape(int.Parse(shapeMatch.Groups[1].Value), int.Parse(shapeMatch.Groups[3].Value));
+                contextShape = shape;
+            }
+            catch { }
+        }
+
+        // Total text length across the resolved scope, to bounds-check the range.
+        int totalLen = 0;
+        foreach (var para in paragraphs)
+        {
+            var rts = BuildPptRunTexts(para);
+            totalLen += rts.Count > 0 ? rts[^1].End : 0;
+        }
+        foreach (var (s, e) in ranges)
+            if (s > totalLen || e > totalLen)
+                throw new ArgumentException(
+                    $"range end {e} out of bounds (scope text has {totalLen} chars).");
+
+        int applied = 0;
+        foreach (var (start, end) in ranges)
+        {
+            int cursor = 0;
+            foreach (var para in paragraphs)
+            {
+                var rts = BuildPptRunTexts(para);
+                int paraLen = rts.Count > 0 ? rts[^1].End : 0;
+                int paraStart = cursor;
+                int paraEnd = cursor + paraLen;
+                cursor = paraEnd;
+
+                // Overlap of [start,end) with this paragraph's [paraStart,paraEnd),
+                // expressed in paragraph-local coordinates for SplitPptRunsAtRange.
+                int localStart = Math.Max(start, paraStart) - paraStart;
+                int localEnd = Math.Min(end, paraEnd) - paraStart;
+                if (localStart >= localEnd) continue; // no (non-empty) overlap here
+
+                var targetRuns = SplitPptRunsAtRange(para, localStart, localEnd);
+                foreach (var run in targetRuns)
+                    foreach (var (key, value) in formatProps)
+                        ApplyPptRunFormatting(run, key, value, contextShape);
+                applied += targetRuns.Count;
+            }
+        }
+
+        foreach (var slidePart in _doc.PresentationPart?.SlideParts ?? Enumerable.Empty<SlidePart>())
+            slidePart.Slide?.Save();
+
+        return applied;
+    }
+
+    /// <summary>
     /// Unified find across all paragraphs in the resolved scope.
     /// </summary>
     private int ProcessPptFind(string path, string findValue, string? replace, Dictionary<string, string> formatProps)

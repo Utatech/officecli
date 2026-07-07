@@ -161,6 +161,79 @@ public partial class WordHandler
     }
 
     /// <summary>
+    /// Apply run formatting to an explicit character range. This is <c>find</c>
+    /// with the text-match step short-circuited: the caller supplies the
+    /// [start,end) offsets directly (0-based, half-open) instead of a pattern,
+    /// and the same per-paragraph split-run + ApplyRunFormatting path runs. Kept
+    /// isomorphic with <see cref="ProcessFind(string,string,string?,Dictionary{string,string},Dictionary{string,string}?,out List{Paragraph})"/>:
+    /// same scope resolution (ResolveParagraphsForFind, incl. header/footer/note
+    /// sweep), same paraId regeneration on changed paragraphs, and — like find —
+    /// it does NOT save (the handler's normal save path flushes). Offsets are
+    /// relative to the concatenated run text of the resolved scope; a range that
+    /// straddles a paragraph boundary formats each covered paragraph's slice.
+    /// Run-level only — keys ApplyRunFormatting does not handle (paragraph-level
+    /// props) are returned as unsupported for the caller to self-report
+    /// (handler-as-truth). Sets LastFindMatchCount to the number of runs formatted.
+    /// </summary>
+    private List<string> ProcessWordRange(string path, IReadOnlyList<(int Start, int End)> ranges, Dictionary<string, string> formatProps)
+    {
+        var paragraphs = ResolveParagraphsForFind(path);
+        if (paragraphs.Count == 0)
+            throw new ArgumentException($"No paragraphs found at path: {path}");
+
+        int totalLen = 0;
+        foreach (var para in paragraphs)
+        {
+            var rts = BuildRunTexts(para);
+            totalLen += rts.Count > 0 ? rts[^1].End : 0;
+        }
+        foreach (var (s, e) in ranges)
+            if (s > totalLen || e > totalLen)
+                throw new ArgumentException(
+                    $"range end {e} out of bounds (scope text has {totalLen} chars).");
+
+        var unsupported = new List<string>();
+        var changedParas = new HashSet<Paragraph>();
+        int applied = 0;
+        foreach (var (start, end) in ranges)
+        {
+            int cursor = 0;
+            foreach (var para in paragraphs)
+            {
+                var rts = BuildRunTexts(para);
+                int paraLen = rts.Count > 0 ? rts[^1].End : 0;
+                int paraStart = cursor;
+                int paraEnd = cursor + paraLen;
+                cursor = paraEnd;
+
+                int localStart = Math.Max(start, paraStart) - paraStart;
+                int localEnd = Math.Min(end, paraEnd) - paraStart;
+                if (localStart >= localEnd) continue; // no (non-empty) overlap here
+
+                var targetRuns = SplitRunsAtRange(para, localStart, localEnd);
+                if (targetRuns.Count == 0) continue;
+                foreach (var run in targetRuns)
+                {
+                    var rPr = EnsureRunProperties(run);
+                    foreach (var (key, value) in formatProps)
+                        if (!ApplyRunFormatting(rPr, key, value) && !unsupported.Contains(key))
+                            unsupported.Add(key);
+                    applied++;
+                }
+                changedParas.Add(para);
+            }
+        }
+
+        // Paragraph content structurally changed (runs split) — regenerate paraId
+        // exactly as ProcessFind does for a matched paragraph.
+        foreach (var para in changedParas)
+            para.TextId = GenerateParaId();
+
+        LastFindMatchCount = applied;
+        return unsupported;
+    }
+
+    /// <summary>
     /// Split runs in a paragraph so that the character range [charStart, charEnd)
     /// is covered by dedicated runs. Returns the list of runs covering that range.
     /// </summary>

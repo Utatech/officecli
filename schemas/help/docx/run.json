@@ -20,7 +20,7 @@
       "/body/p[N]/r[N]"
     ]
   },
-  "note": "effective.* keys (effective.size, effective.bold, effective.color, ...) are read-only inheritance-resolved values: the run does not set the property directly, but resolves it by walking the run/paragraph style chain up to docDefaults. Each carries a paired effective.X.src pointer (e.g. \"/styles/Heading1\" or \"/docDefaults\") so callers can locate the writing layer. effective.* never appears when the run has the corresponding direct value — direct always wins.",
+  "note": "effective.* keys (effective.size, effective.bold, effective.color, ...) are read-only inheritance-resolved values: the run does not set the property directly, but resolves it by walking the run/paragraph style chain up to docDefaults. Each carries a paired effective.X.src pointer (e.g. \"/styles/Heading1\" or \"/docDefaults\") so callers can locate the writing layer. effective.* never appears when the run has the corresponding direct value — direct always wins. Run-level formatting can also be applied by character offset without addressing individual runs: `set <paragraph-or-body-path> --prop range=START:END --prop bold=true` (0-based, half-open; several disjoint spans as `range=0:5,12:15`) splits the run(s) covering each span and applies the format props to just that slice — the offset-based sibling of `find` (which locates the span by text). Offsets are relative to the concatenated run text of the path scope: a /body/p[N] path is that paragraph, /body spans every paragraph. `find` and `range` are mutually exclusive on one call; `range` is run-level formatting only (no text=/replace/revision — use find or an explicit run path for those).",
   "extends": [
     "_shared/run",
     "_shared/run.docx-pptx",

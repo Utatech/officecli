@@ -55,6 +55,38 @@ public partial class PowerPointHandler
         if (path.Equals("/theme", StringComparison.OrdinalIgnoreCase))
             return SetThemeProperties(properties);
 
+        // find / range are two mutually exclusive addressing modes (text match vs
+        // explicit character offsets). Reject the contradiction rather than pick a
+        // silent winner — mirrors the revision-namespace mutual-exclusion rule.
+        if (properties.ContainsKey("find") && properties.ContainsKey("range"))
+            throw new ArgumentException(
+                "'find' and 'range' are mutually exclusive addressing modes — provide one, not both.");
+
+        // Explicit character-range addressing: same split-run + format engine as
+        // find, but the [start,end) offsets are supplied directly instead of being
+        // derived from a text match. This gives the caller (e.g. an editor with a
+        // live text selection) unambiguous run-level formatting even when the
+        // selected text repeats. Coordinates are 0-based, half-open, relative to
+        // the concatenated run text of the resolved scope — path to a shape spans
+        // all its paragraphs; path to /paragraph[P] is that paragraph only.
+        if (properties.TryGetValue("range", out var rangeSpec))
+        {
+            if (properties.ContainsKey("replace") || properties.ContainsKey("text"))
+                throw new ArgumentException(
+                    "range currently supports formatting only (bold, color, size, …); " +
+                    "text insertion/replacement via range is not yet supported.");
+            var rangeFormatProps = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+            rangeFormatProps.Remove("range");
+            rangeFormatProps.Remove("scope");
+            rangeFormatProps.Remove("regex");
+            if (rangeFormatProps.Count == 0)
+                throw new ArgumentException(
+                    "'range' requires format properties (e.g. bold, color, size).");
+            var ranges = ParseHelpers.ParseCharRanges(rangeSpec);
+            LastFindMatchCount = ProcessPptRange(path, ranges, rangeFormatProps);
+            return [];
+        }
+
         // Unified find: if 'find' key is present, route to ProcessPptFind
         if (properties.TryGetValue("find", out var findText))
         {

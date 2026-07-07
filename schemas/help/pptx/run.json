@@ -16,7 +16,7 @@
       "/slide[N]/shape[M]/p[K]/r[L]"
     ]
   },
-  "note": "Appends a:r inside a:p. Font properties live on a:rPr. Colors get #-prefixed on readback via ParseHelpers.FormatHexColor. effective.* keys behave as documented in pptx/shape.json (no effective.direction on runs).",
+  "note": "Appends a:r inside a:p. Font properties live on a:rPr. Colors get #-prefixed on readback via ParseHelpers.FormatHexColor. effective.* keys behave as documented in pptx/shape.json (no effective.direction on runs). Run-level formatting can also be applied by character offset without addressing individual runs: `set <shape-or-paragraph-path> --prop range=START:END --prop bold=true` (0-based, half-open; several disjoint spans as `range=6:11,20:25`) splits the run(s) covering each span and applies the format props to just that slice — the offset-based sibling of `find` (which locates the span by text). Offsets are relative to the concatenated run text of the path scope: a shape path spans all its paragraphs, a /paragraph[P] path is that paragraph only. `find` and `range` are mutually exclusive on one call; `range` currently applies formatting only (no text= yet).",
   "extends": [
     "_shared/run",
     "_shared/run.docx-pptx"

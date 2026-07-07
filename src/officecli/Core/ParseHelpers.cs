@@ -423,6 +423,59 @@ internal static class ParseHelpers
     }
 
     /// <summary>
+    /// Parse a "start:end" character-range spec into 0-based, half-open offsets.
+    /// Colon separator mirrors the officecli range convention (Excel A1:B2).
+    /// Shared by the pptx and docx run-range formatting paths so the two never
+    /// diverge (CONSISTENCY(char-range)).
+    /// </summary>
+    public static (int Start, int End) ParseCharRange(string spec)
+    {
+        var parts = spec.Split(':');
+        if (parts.Length != 2
+            || !int.TryParse(parts[0].Trim(), CultureInfo.InvariantCulture, out var start)
+            || !int.TryParse(parts[1].Trim(), CultureInfo.InvariantCulture, out var end))
+            throw new ArgumentException(
+                $"Invalid range '{spec}'. Expected 'start:end' with 0-based integer " +
+                "character offsets (e.g. '6:11').");
+        if (start < 0 || end < 0)
+            throw new ArgumentException($"Invalid range '{spec}': offsets must be non-negative.");
+        if (end < start)
+            throw new ArgumentException($"Invalid range '{spec}': end ({end}) must be >= start ({start}).");
+        return (start, end);
+    }
+
+    /// <summary>
+    /// Parse a comma-separated list of "start:end" character ranges into 0-based,
+    /// half-open offset pairs (e.g. "6:11,20:25" → [(6,11),(20,25)]). A single
+    /// range needs no comma. This lets one range= command target several disjoint
+    /// spans — the same shape find's format path produces from multiple matches —
+    /// so range is a complete addressing alternative wherever the caller already
+    /// knows the offsets. Order is preserved; the caller applies them (format-only
+    /// run splitting does not shift character offsets, so any order is safe).
+    /// </summary>
+    public static List<(int Start, int End)> ParseCharRanges(string spec)
+    {
+        var result = new List<(int Start, int End)>();
+        foreach (var seg in spec.Split(','))
+        {
+            var trimmed = seg.Trim();
+            if (trimmed.Length == 0) continue;
+            result.Add(ParseCharRange(trimmed));
+        }
+        if (result.Count == 0)
+            throw new ArgumentException(
+                $"Invalid range '{spec}'. Expected one or more 'start:end' ranges " +
+                "(e.g. '6:11' or '6:11,20:25').");
+        // Normalize to ascending position order (by Start, then End) regardless of
+        // the order the caller listed them. This matches find, whose matches are
+        // inherently position-ordered, and lets a future text-mutating path process
+        // ranges back-to-front (descending) so earlier offsets stay valid — the same
+        // reason ProcessFindInParagraph iterates its matches in reverse.
+        result.Sort((a, b) => a.Start != b.Start ? a.Start.CompareTo(b.Start) : a.End.CompareTo(b.End));
+        return result;
+    }
+
+    /// <summary>
     /// Safely parse a string as double, throwing ArgumentException with a clear message on failure.
     /// </summary>
     public static double SafeParseDouble(string value, string propertyName)

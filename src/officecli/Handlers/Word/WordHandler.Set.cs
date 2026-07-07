@@ -84,6 +84,46 @@ public partial class WordHandler
             return unsupported;
         }
 
+        // find / range are two mutually exclusive addressing modes (text match vs
+        // explicit character offsets). Reject the contradiction rather than pick a
+        // silent winner — mirrors the revision-namespace ambiguity rule.
+        if (properties.ContainsKey("find") && properties.ContainsKey("range"))
+            throw new ArgumentException(
+                "'find' and 'range' are mutually exclusive addressing modes — provide one, not both.");
+
+        // Explicit character-range run formatting: same split-run engine as find,
+        // but the [start,end) offsets are supplied directly instead of derived from
+        // a text match — giving a caller with a live text selection unambiguous
+        // run-level formatting even when the selected text repeats. Run-level only;
+        // offsets are 0-based, half-open, relative to the concatenated run text of
+        // the resolved scope (a /body/p[N] path is that paragraph; /body spans all).
+        // Structured to be isomorphic with this handler's own find path
+        // (ProcessWordRange ≡ ProcessFind minus the match step); the cross-handler
+        // range surface itself is CONSISTENCY(char-range).
+        if (properties.TryGetValue("range", out var rangeSpec))
+        {
+            if (properties.ContainsKey("replace") || properties.ContainsKey("text"))
+                throw new ArgumentException(
+                    "range currently supports formatting only (bold, color, size, …); " +
+                    "text insertion/replacement via range is not yet supported.");
+            if (properties.Keys.Any(k => k.StartsWith("revision.", StringComparison.OrdinalIgnoreCase)))
+                throw new ArgumentException(
+                    "range cannot be combined with revision.* — use find (which infers "
+                    + "ins/del) or an explicit /body/p[N]/r[M] path for tracked-change formatting.");
+            var rangeFormatProps = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+            rangeFormatProps.Remove("range");
+            rangeFormatProps.Remove("scope");
+            rangeFormatProps.Remove("regex");
+            if (rangeFormatProps.Count == 0)
+                throw new ArgumentException(
+                    "'range' requires format properties (e.g. bold, color, size).");
+            var ranges = ParseHelpers.ParseCharRanges(rangeSpec);
+            var rangeEffectivePath = (path is "" or "/") ? "/body" : path;
+            foreach (var u in ProcessWordRange(rangeEffectivePath, ranges, rangeFormatProps))
+                if (!unsupported.Contains(u)) unsupported.Add(u);
+            return unsupported;
+        }
+
         // Unified find: if 'find' key is present (at any path level), route to ProcessFind
         if (properties.TryGetValue("find", out var findText))
         {

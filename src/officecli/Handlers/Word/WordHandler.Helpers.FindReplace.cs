@@ -294,7 +294,8 @@ public partial class WordHandler
         bool isRegex,
         string? replace,
         Dictionary<string, string>? formatProps,
-        Dictionary<string, string>? revisionProps)
+        Dictionary<string, string>? revisionProps,
+        (int Start, int End)? runScope = null)
     {
         var runTexts = BuildRunTexts(para);
         if (runTexts.Count == 0) return 0;
@@ -339,6 +340,29 @@ public partial class WordHandler
             matches = FindHelpers.FindMatchRanges(fullText, pattern, isRegex);
         }
         if (matches.Count == 0) return 0;
+
+        // CONSISTENCY(find-run-scope): when the find scope is a single run
+        // (/body/p[N]/r[K]), keep only matches fully contained in that run's
+        // character span — mirrors PPTX ProcessFindInPptParagraph's runIndexFilter
+        // (R32). The span is passed in (computed from the resolved run element in
+        // the same BuildRunTexts coordinate) rather than a run index, because a
+        // Word run may hold several <w:t> children — index-based counting would
+        // misalign. Filter both `matches` and `matchObjs` together to keep the
+        // regex-backref list in step.
+        if (runScope.HasValue)
+        {
+            var (scopeStart, scopeEnd) = runScope.Value;
+            var keepIdx = new HashSet<int>();
+            for (int k = 0; k < matches.Count; k++)
+            {
+                var (s, l) = matches[k];
+                if (s >= scopeStart && s + l <= scopeEnd) keepIdx.Add(k);
+            }
+            matches = matches.Where((_, k) => keepIdx.Contains(k)).ToList();
+            if (matchObjs != null)
+                matchObjs = matchObjs.Where((_, k) => keepIdx.Contains(k)).ToList();
+            if (matches.Count == 0) return 0;
+        }
 
         // Process from end to start to preserve character offsets
         for (int i = matches.Count - 1; i >= 0; i--)
@@ -627,8 +651,15 @@ public partial class WordHandler
         var (pattern, isRegex) = FindHelpers.ParseFindPattern(findValue);
         if (string.IsNullOrEmpty(pattern) && !isRegex) return 0;
 
-        // Resolve paragraphs from path
-        var paragraphs = ResolveParagraphsForFind(path);
+        // Resolve paragraphs from path. A /body/p[N]/r[K] path also surfaces the
+        // target run so we can confine matches to its character span; the span is
+        // computed from the run element (not an index — a Word run can hold several
+        // <w:t>) in the same BuildRunTexts coordinate the match offsets use. A run
+        // with no text yields no span → whole-paragraph scope is kept (unchanged).
+        var paragraphs = ResolveParagraphsForFind(path, out var scopeRun);
+        Paragraph? scopePara = scopeRun?.Ancestors<Paragraph>().FirstOrDefault();
+        (int Start, int End)? scopeSpan =
+            (scopeRun != null && scopePara != null) ? RunCharSpan(scopePara, scopeRun) : null;
 
         int totalCount = 0;
         foreach (var para in paragraphs)
@@ -639,7 +670,8 @@ public partial class WordHandler
                 isRegex,
                 replace,
                 formatProps.Count > 0 ? formatProps : null,
-                revisionProps);
+                revisionProps,
+                (scopeSpan.HasValue && ReferenceEquals(para, scopePara)) ? scopeSpan : null);
             if (count > 0)
             {
                 para.TextId = GenerateParaId();
@@ -649,6 +681,22 @@ public partial class WordHandler
         }
 
         return totalCount;
+    }
+
+    /// <summary>
+    /// Character span [start,end) of <paramref name="run"/> within
+    /// <paramref name="para"/>, in the BuildRunTexts coordinate the find match
+    /// offsets use. Null when the run carries no text (nothing to scope to — the
+    /// caller then keeps whole-paragraph scope). Robust to a run holding several
+    /// &lt;w:t&gt; children (their spans are contiguous, so first.Start..last.End).
+    /// </summary>
+    private static (int Start, int End)? RunCharSpan(Paragraph para, Run run)
+    {
+        int? start = null;
+        int end = 0;
+        foreach (var rt in BuildRunTexts(para))
+            if (ReferenceEquals(rt.Run, run)) { start ??= rt.Start; end = rt.End; }
+        return start.HasValue ? (start.Value, end) : null;
     }
 
     /// <summary>
@@ -664,7 +712,18 @@ public partial class WordHandler
     /// behaviour; if the contract is relaxed, update both sites in one pass.
     /// </summary>
     private List<Paragraph> ResolveParagraphsForFind(string path)
+        => ResolveParagraphsForFind(path, out _);
+
+    /// <summary>
+    /// Resolve paragraphs, and — when the path is a single run (/body/p[N]/r[K])
+    /// — surface that run in <paramref name="scopeRun"/> so the caller can confine
+    /// find matches to the run's character span (CONSISTENCY(find-run-scope)).
+    /// scopeRun is null for every non-run scope (whole paragraph, table cell,
+    /// header/footer, selector, …), which fall back to the full resolved scope.
+    /// </summary>
+    private List<Paragraph> ResolveParagraphsForFind(string path, out Run? scopeRun)
     {
+        scopeRun = null;
         var paragraphs = new List<Paragraph>();
         var mainPart = _doc.MainDocumentPart;
 
@@ -756,6 +815,11 @@ public partial class WordHandler
                 var ancestorPara = element.Ancestors<Paragraph>().FirstOrDefault();
                 if (ancestorPara != null)
                     paragraphs.Add(ancestorPara);
+                // A /r[K] path resolves to a Run: confine find to that run's span
+                // (CONSISTENCY(find-run-scope)). A Hyperlink (or other inline
+                // wrapper) is not a run and keeps whole-paragraph scope.
+                if (element is Run rn)
+                    scopeRun = rn;
             }
             return paragraphs;
         }

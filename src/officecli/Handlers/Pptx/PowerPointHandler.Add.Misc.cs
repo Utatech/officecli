@@ -602,7 +602,7 @@ public partial class PowerPointHandler
             var shapes = shapeTree.Elements<Shape>().ToList();
             if (shapeIdx < 1 || shapeIdx > shapes.Count)
                 throw new ArgumentException($"Shape index {shapeIdx} out of range (total: {shapes.Count})");
-            return shapes[shapeIdx - 1].NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value
+            return shapes[PathIndex.ToArrayIndex(shapeIdx)].NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value
                 ?? throw new ArgumentException($"Shape {shapeIdx} has no ID");
         }
 

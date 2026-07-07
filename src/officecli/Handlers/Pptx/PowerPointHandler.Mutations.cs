@@ -149,7 +149,7 @@ public partial class PowerPointHandler
             if (tableIdx < 1 || tableIdx > tables.Count)
                 throw new ArgumentException($"Table {tableIdx} not found (total: {tables.Count})");
 
-            var table = tables[tableIdx - 1].Descendants<Drawing.Table>().First();
+            var table = tables[PathIndex.ToArrayIndex(tableIdx)].Descendants<Drawing.Table>().First();
             var rows = table.Elements<Drawing.TableRow>().ToList();
             if (rowIdx < 1 || rowIdx > rows.Count)
                 throw new ArgumentException($"Row {rowIdx} not found (total: {rows.Count})");
@@ -167,7 +167,7 @@ public partial class PowerPointHandler
             // become invisible if not promoted. Record the column slot and
             // remaining-rows budget so the post-Remove pass can clear them.
             var rowSpanFixups = new List<(int colIdx, int budget)>();
-            var anchorRow = rows[rowIdx - 1];
+            var anchorRow = rows[PathIndex.ToArrayIndex(rowIdx)];
             int slotAcc = 0;
             foreach (var anchorCell in anchorRow.Elements<Drawing.TableCell>())
             {
@@ -227,14 +227,14 @@ public partial class PowerPointHandler
                 throw new ArgumentException($"Column {colIdx} not found (total: {gridCols.Count})");
 
             // Remove the grid column
-            gridCols[colIdx - 1].Remove();
+            gridCols[PathIndex.ToArrayIndex(colIdx)].Remove();
 
             // Remove the corresponding cell from each row
             foreach (var row in colTable.Elements<Drawing.TableRow>())
             {
                 var cells = row.Elements<Drawing.TableCell>().ToList();
                 if (colIdx <= cells.Count)
-                    cells[colIdx - 1].Remove();
+                    cells[PathIndex.ToArrayIndex(colIdx)].Remove();
             }
 
             // Update GraphicFrame container width
@@ -442,7 +442,7 @@ public partial class PowerPointHandler
             if (slideIdx < 1 || slideIdx > slideIds.Count)
                 throw new ArgumentException($"Slide {slideIdx} not found (total: {slideIds.Count})");
 
-            var slideId = slideIds[slideIdx - 1];
+            var slideId = slideIds[PathIndex.ToArrayIndex(slideIdx)];
             var relId = slideId.RelationshipId?.Value;
             slideId.Remove();
             if (relId != null)
@@ -456,7 +456,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shapes");
 
@@ -749,7 +749,7 @@ public partial class PowerPointHandler
             if (slideIdx < 1 || slideIdx > slideIds.Count)
                 throw new ArgumentException($"Slide {slideIdx} not found (total: {slideIds.Count})");
 
-            var slideId = slideIds[slideIdx - 1];
+            var slideId = slideIds[PathIndex.ToArrayIndex(slideIdx)];
 
             // Resolve after/before anchor BEFORE removing
             SlideId? afterAnchor = null, beforeAnchor = null;
@@ -1276,7 +1276,7 @@ public partial class PowerPointHandler
         var rows = table.Elements<Drawing.TableRow>().ToList();
         if (rowIdx < 1 || rowIdx > rows.Count)
             throw new ArgumentException($"Row {rowIdx} not found (total: {rows.Count})");
-        var row = rows[rowIdx - 1];
+        var row = rows[PathIndex.ToArrayIndex(rowIdx)];
 
         // Resolve --before/--after anchor relative to sibling rows (1-based)
         // before mutating, then convert to a 0-based target position.
@@ -1342,7 +1342,7 @@ public partial class PowerPointHandler
         if (rowIdx < 1 || rowIdx > rows.Count)
             throw new ArgumentException($"Row {rowIdx} not found (total: {rows.Count})");
 
-        var clone = (Drawing.TableRow)rows[rowIdx - 1].CloneNode(true);
+        var clone = (Drawing.TableRow)rows[PathIndex.ToArrayIndex(rowIdx)].CloneNode(true);
 
         // Resolve --before/--after anchor first (relative to current sibling order).
         int? targetIdx = null;
@@ -1404,12 +1404,12 @@ public partial class PowerPointHandler
         var rows = table.Elements<Drawing.TableRow>().ToList();
         if (rowIdx < 1 || rowIdx > rows.Count)
             throw new ArgumentException($"Row {rowIdx} not found (total: {rows.Count})");
-        var row = rows[rowIdx - 1];
+        var row = rows[PathIndex.ToArrayIndex(rowIdx)];
         var cells = row.Elements<Drawing.TableCell>().ToList();
         if (cellIdx < 1 || cellIdx > cells.Count)
             throw new ArgumentException($"Cell {cellIdx} not found (total: {cells.Count})");
 
-        var clone = (Drawing.TableCell)cells[cellIdx - 1].CloneNode(true);
+        var clone = (Drawing.TableCell)cells[PathIndex.ToArrayIndex(cellIdx)].CloneNode(true);
 
         int? targetIdx = null;
         if (position?.After != null || position?.Before != null)
@@ -1504,7 +1504,7 @@ public partial class PowerPointHandler
             return $"/slide[{slideIdx}]/table[{tableIdx}]/col[{colIdx}]";
 
         // Detach gridCol + per-row tc
-        var movingGridCol = gridCols[colIdx - 1];
+        var movingGridCol = gridCols[PathIndex.ToArrayIndex(colIdx)];
         movingGridCol.Remove();
         var movingCells = new List<Drawing.TableCell>();
         foreach (var row in table.Elements<Drawing.TableRow>())
@@ -1512,8 +1512,8 @@ public partial class PowerPointHandler
             var cells = row.Elements<Drawing.TableCell>().ToList();
             if (colIdx <= cells.Count)
             {
-                movingCells.Add(cells[colIdx - 1]);
-                cells[colIdx - 1].Remove();
+                movingCells.Add(cells[PathIndex.ToArrayIndex(colIdx)]);
+                cells[PathIndex.ToArrayIndex(colIdx)].Remove();
             }
             else
             {
@@ -1573,13 +1573,13 @@ public partial class PowerPointHandler
         // No source removal here, so don't pass sourceColIdx (no compensation needed).
         var targetIdx = ResolveColumnAnchorIndex(position, slideIdx, tableIdx, sourceColIdx: null);
 
-        var clonedGridCol = (Drawing.GridColumn)gridCols[colIdx - 1].CloneNode(true);
+        var clonedGridCol = (Drawing.GridColumn)gridCols[PathIndex.ToArrayIndex(colIdx)].CloneNode(true);
         var clonedCells = new List<Drawing.TableCell>();
         foreach (var row in table.Elements<Drawing.TableRow>())
         {
             var cells = row.Elements<Drawing.TableCell>().ToList();
             clonedCells.Add(colIdx <= cells.Count
-                ? (Drawing.TableCell)cells[colIdx - 1].CloneNode(true)
+                ? (Drawing.TableCell)cells[PathIndex.ToArrayIndex(colIdx)].CloneNode(true)
                 : new Drawing.TableCell());
         }
 
@@ -1962,7 +1962,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
 
@@ -2207,11 +2207,11 @@ public partial class PowerPointHandler
             ?? throw new ArgumentException("Shape has no text body");
         if (paraIdx < 1 || paraIdx > paragraphs.Count)
             throw new ArgumentException($"Paragraph {paraIdx} not found (shape has {paragraphs.Count} paragraphs)");
-        var para = paragraphs[paraIdx - 1];
+        var para = paragraphs[PathIndex.ToArrayIndex(paraIdx)];
         var runs = para.Elements<Drawing.Run>().ToList();
         if (runIdx < 1 || runIdx > runs.Count)
             throw new ArgumentException($"Run {runIdx} not found (paragraph has {runs.Count} runs)");
-        runs[runIdx - 1].Remove();
+        runs[PathIndex.ToArrayIndex(runIdx)].Remove();
         GetSlide(slidePart).Save();
     }
 
@@ -2221,7 +2221,7 @@ public partial class PowerPointHandler
             ?? throw new ArgumentException("Shape has no text body");
         if (paraIdx < 1 || paraIdx > paragraphs.Count)
             throw new ArgumentException($"Paragraph {paraIdx} not found (shape has {paragraphs.Count} paragraphs)");
-        paragraphs[paraIdx - 1].Remove();
+        paragraphs[PathIndex.ToArrayIndex(paraIdx)].Remove();
         GetSlide(slidePart).Save();
     }
 }

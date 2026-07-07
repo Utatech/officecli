@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Presentation;
 using Drawing = DocumentFormat.OpenXml.Drawing;
 using OfficeCli.Core.Diagram;
+using OfficeCli.Core;
 
 namespace OfficeCli.Handlers;
 
@@ -73,7 +74,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"slide {slideIdx} not found (total: {slideParts.Count}).");
-        var shapeTree = GetSlide(slideParts[slideIdx - 1]).CommonSlideData!.ShapeTree!;
+        var shapeTree = GetSlide(slideParts[PathIndex.ToArrayIndex(slideIdx)]).CommonSlideData!.ShapeTree!;
 
         // Placement: the slide size is the user's, not ours. By default we FIT the
         // diagram into a box on the UNCHANGED slide (a lone flowchart must not

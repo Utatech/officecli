@@ -24,11 +24,11 @@ public partial class PowerPointHandler
         var tableRows = table.Elements<Drawing.TableRow>().ToList();
         if (rowIdx < 1 || rowIdx > tableRows.Count)
             throw new ArgumentException($"Row {rowIdx} not found (table has {tableRows.Count} rows)");
-        var cells = tableRows[rowIdx - 1].Elements<Drawing.TableCell>().ToList();
+        var cells = tableRows[PathIndex.ToArrayIndex(rowIdx)].Elements<Drawing.TableCell>().ToList();
         if (cellIdx < 1 || cellIdx > cells.Count)
             throw new ArgumentException($"Cell {cellIdx} not found (row has {cells.Count} cells)");
 
-        var cell = cells[cellIdx - 1];
+        var cell = cells[PathIndex.ToArrayIndex(cellIdx)];
         // Clone cell for rollback on failure (atomic: no partial modifications)
         var cellBackup = cell.CloneNode(true);
         try
@@ -54,7 +54,7 @@ public partial class PowerPointHandler
         if (rowIdx < 1 || rowIdx > tableRows.Count)
             throw new ArgumentException($"Row {rowIdx} not found (table has {tableRows.Count} rows)");
 
-        var row = tableRows[rowIdx - 1];
+        var row = tableRows[PathIndex.ToArrayIndex(rowIdx)];
         var unsupported = new List<string>();
         foreach (var (key, value) in properties)
         {
@@ -161,7 +161,7 @@ public partial class PowerPointHandler
         if (gridCols == null || colIdx < 1 || colIdx > gridCols.Count)
             throw new ArgumentException($"Column {colIdx} not found (total: {gridCols?.Count ?? 0})");
 
-        var gc = gridCols[colIdx - 1];
+        var gc = gridCols[PathIndex.ToArrayIndex(colIdx)];
         var unsupported = new List<string>();
         foreach (var (key, value) in properties)
         {
@@ -208,7 +208,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts2.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts2.Count})");
 
-        var slidePart = slideParts2[slideIdx - 1];
+        var slidePart = slideParts2[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         var graphicFrames = shapeTree.Elements<GraphicFrame>()

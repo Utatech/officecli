@@ -510,7 +510,7 @@ public partial class PowerPointHandler
                 var sps = GetSlideParts().ToList();
                 if (slideIdx < 1 || slideIdx > sps.Count)
                     throw new ArgumentException($"Slide {slideIdx} not found (total: {sps.Count})");
-                OpenXmlCompositeElement scope = GetSlide(sps[slideIdx - 1]).CommonSlideData?.ShapeTree
+                OpenXmlCompositeElement scope = GetSlide(sps[PathIndex.ToArrayIndex(slideIdx)]).CommonSlideData?.ShapeTree
                     ?? throw new ArgumentException($"Slide {slideIdx} has no shapes");
                 foreach (Match gm in Regex.Matches(grpChain, @"/group\[(\d+)\]"))
                 {
@@ -523,7 +523,7 @@ public partial class PowerPointHandler
                 var shapesInScope = scope.Elements<Shape>().ToList();
                 if (shapeIdx < 1 || shapeIdx > shapesInScope.Count)
                     throw new ArgumentException($"Shape {shapeIdx} not found in group scope (have {shapesInScope.Count})");
-                brShape = shapesInScope[shapeIdx - 1];
+                brShape = shapesInScope[PathIndex.ToArrayIndex(shapeIdx)];
             }
             brParaGroup = brParaMatch.Groups[4];
             brReturnPathHead = $"/slide[{slideIdx}]{grpChain}/shape[{shapeIdx}]";
@@ -535,7 +535,7 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-            brShape = ResolvePlaceholderShape(slideParts[slideIdx - 1], phToken);
+            brShape = ResolvePlaceholderShape(slideParts[PathIndex.ToArrayIndex(slideIdx)], phToken);
             brParaGroup = brPhMatch.Groups[3];
             brReturnPathHead = $"/slide[{slideIdx}]/placeholder[{phToken}]";
         }

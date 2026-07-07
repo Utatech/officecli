@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using Drawing = DocumentFormat.OpenXml.Drawing;
+using OfficeCli.Core;
 
 namespace OfficeCli.Handlers;
 
@@ -69,7 +70,7 @@ public partial class PowerPointHandler
                     $"Slide jump target out of range: slide[{slideIdx}] (total {allSlides.Count}). " +
                     $"A slide-jump link can only target a slide that already exists — add slide[{slideIdx}] " +
                     "first, then set the link (forward references are not buffered outside batch mode).");
-            var targetSlide = allSlides[slideIdx - 1];
+            var targetSlide = allSlides[PathIndex.ToArrayIndex(slideIdx)];
 
             // Reuse an existing slide-to-slide relationship if present
             string? relId = null;

@@ -440,7 +440,7 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide index out of range: {slideIdx} (have {slideParts.Count} slides)");
-            var notesPart = slideParts[slideIdx - 1].NotesSlidePart;
+            var notesPart = slideParts[PathIndex.ToArrayIndex(slideIdx)].NotesSlidePart;
             if (notesPart?.NotesSlide != null)
                 paragraphs.AddRange(notesPart.NotesSlide.Descendants<Drawing.Paragraph>());
             return (paragraphs, null);
@@ -459,22 +459,22 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide index out of range: {slideIdx}");
-            var slide = slideParts[slideIdx - 1].Slide;
+            var slide = slideParts[PathIndex.ToArrayIndex(slideIdx)].Slide;
             var tables = slide?.Descendants<Drawing.Table>().ToList() ?? new List<Drawing.Table>();
             if (tableIdx < 1 || tableIdx > tables.Count)
                 throw new ArgumentException($"Table index out of range: {tableIdx}");
-            var rows = tables[tableIdx - 1].Elements<Drawing.TableRow>().ToList();
+            var rows = tables[PathIndex.ToArrayIndex(tableIdx)].Elements<Drawing.TableRow>().ToList();
             if (rowIdx < 1 || rowIdx > rows.Count)
                 throw new ArgumentException($"Row index out of range: {rowIdx}");
-            var cells = rows[rowIdx - 1].Elements<Drawing.TableCell>().ToList();
+            var cells = rows[PathIndex.ToArrayIndex(rowIdx)].Elements<Drawing.TableCell>().ToList();
             if (colIdx < 1 || colIdx > cells.Count)
                 throw new ArgumentException($"Column index out of range: {colIdx}");
-            var cellParas = cells[colIdx - 1].Descendants<Drawing.Paragraph>().ToList();
+            var cellParas = cells[PathIndex.ToArrayIndex(colIdx)].Descendants<Drawing.Paragraph>().ToList();
             if (paraIdx.HasValue)
             {
                 if (paraIdx.Value < 1 || paraIdx.Value > cellParas.Count)
                     throw new ArgumentException($"Paragraph index out of range: {paraIdx.Value} (cell has {cellParas.Count})");
-                paragraphs.Add(cellParas[paraIdx.Value - 1]);
+                paragraphs.Add(cellParas[PathIndex.ToArrayIndex(paraIdx.Value)]);
             }
             else
             {
@@ -498,11 +498,11 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide index out of range: {slideIdx}");
-            var slide = slideParts[slideIdx - 1].Slide;
+            var slide = slideParts[PathIndex.ToArrayIndex(slideIdx)].Slide;
             var tables = slide?.Descendants<Drawing.Table>().ToList() ?? new List<Drawing.Table>();
             if (tableIdx < 1 || tableIdx > tables.Count)
                 throw new ArgumentException($"Table index out of range: {tableIdx}");
-            paragraphs.AddRange(tables[tableIdx - 1].Descendants<Drawing.Paragraph>());
+            paragraphs.AddRange(tables[PathIndex.ToArrayIndex(tableIdx)].Descendants<Drawing.Paragraph>());
             return (paragraphs, null);
         }
 
@@ -536,7 +536,7 @@ public partial class PowerPointHandler
             {
                 if (paraIdx.Value < 1 || paraIdx.Value > shapeParas.Count)
                     throw new ArgumentException($"Paragraph index out of range: {paraIdx.Value} (shape has {shapeParas.Count})");
-                paragraphs.Add(shapeParas[paraIdx.Value - 1]);
+                paragraphs.Add(shapeParas[PathIndex.ToArrayIndex(paraIdx.Value)]);
             }
             else
             {
@@ -559,7 +559,7 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide index out of range: {slideIdx}");
-            var slide = slideParts[slideIdx - 1].Slide;
+            var slide = slideParts[PathIndex.ToArrayIndex(slideIdx)].Slide;
             if (slide != null)
                 paragraphs.AddRange(slide.Descendants<Drawing.Paragraph>());
             return (paragraphs, null);

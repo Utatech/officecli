@@ -26,7 +26,7 @@ public partial class PowerPointHandler
         if (runIdx < 1 || runIdx > allRuns.Count)
             throw new ArgumentException($"Run {runIdx} not found (shape has {allRuns.Count} runs)");
 
-        var targetRun = allRuns[runIdx - 1];
+        var targetRun = allRuns[PathIndex.ToArrayIndex(runIdx)];
         var linkValRun = properties.GetValueOrDefault("link");
         var tooltipValRun = properties.GetValueOrDefault("tooltip");
         var runOnlyProps = properties
@@ -107,7 +107,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shape = ResolvePlaceholderShape(slidePart, phId);
         return SetParagraphOnShape(slidePart, shape, paraIdx, properties);
     }
@@ -122,7 +122,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shape = ResolvePlaceholderShape(slidePart, phId);
         return SetParagraphRunOnShape(slidePart, shape, paraIdx, runIdx, properties);
     }
@@ -144,12 +144,12 @@ public partial class PowerPointHandler
             ?? throw new ArgumentException("Shape has no text body");
         if (paraIdx < 1 || paraIdx > paragraphs.Count)
             throw new ArgumentException($"Paragraph {paraIdx} not found (shape has {paragraphs.Count} paragraphs)");
-        var para = paragraphs[paraIdx - 1];
+        var para = paragraphs[PathIndex.ToArrayIndex(paraIdx)];
         var paraRuns = para.Elements<Drawing.Run>().ToList();
         if (runIdx < 1 || runIdx > paraRuns.Count)
             throw new ArgumentException($"Run {runIdx} not found (paragraph has {paraRuns.Count} runs)");
 
-        var targetRun = paraRuns[runIdx - 1];
+        var targetRun = paraRuns[PathIndex.ToArrayIndex(runIdx)];
         var linkVal = properties.GetValueOrDefault("link");
         var tooltipVal = properties.GetValueOrDefault("tooltip");
         var runOnlyProps = properties
@@ -176,7 +176,7 @@ public partial class PowerPointHandler
         if (paraIdx < 1 || paraIdx > paragraphs.Count)
             throw new ArgumentException($"Paragraph {paraIdx} not found (shape has {paragraphs.Count} paragraphs)");
 
-        var para = paragraphs[paraIdx - 1];
+        var para = paragraphs[PathIndex.ToArrayIndex(paraIdx)];
         var paraRuns = para.Elements<Drawing.Run>().ToList();
         var unsupported = new List<string>();
 
@@ -432,7 +432,7 @@ public partial class PowerPointHandler
                             ?? new List<Drawing.Paragraph>();
                         if (paraIdx >= 1 && paraIdx <= refreshed.Count)
                         {
-                            para = refreshed[paraIdx - 1];
+                            para = refreshed[PathIndex.ToArrayIndex(paraIdx)];
                             paraRuns = para.Elements<Drawing.Run>().ToList();
                         }
                     }
@@ -454,7 +454,7 @@ public partial class PowerPointHandler
         var slideParts2 = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts2.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts2.Count})");
-        var slidePart = slideParts2[slideIdx - 1];
+        var slidePart = slideParts2[PathIndex.ToArrayIndex(slideIdx)];
         var shape = ResolvePlaceholderShape(slidePart, phId);
 
         // CONSISTENCY(placeholder-materialize-run): ResolvePlaceholderShape clones
@@ -496,7 +496,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
 
         Shape? shape = null;
         if (titleIdx == 1)
@@ -565,7 +565,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts6.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts6.Count})");
 
-        var slidePart = slideParts6[slideIdx - 1];
+        var slidePart = slideParts6[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         var groups = shapeTree.Elements<GroupShape>().ToList();
@@ -790,7 +790,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts5.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts5.Count})");
 
-        var slidePart = slideParts5[slideIdx - 1];
+        var slidePart = slideParts5[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         var connectors = shapeTree.Elements<ConnectionShape>().ToList();
@@ -1360,7 +1360,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         var groups = shapeTree.Elements<GroupShape>().ToList();
@@ -1370,7 +1370,7 @@ public partial class PowerPointHandler
         var innerShapes = grp.Elements<Shape>().ToList();
         if (shapeIdx < 1 || shapeIdx > innerShapes.Count)
             throw new ArgumentException($"Shape {shapeIdx} not found in group {grpIdx} (total: {innerShapes.Count})");
-        return ApplyShapePropsCore(slidePart, innerShapes[shapeIdx - 1], properties);
+        return ApplyShapePropsCore(slidePart, innerShapes[PathIndex.ToArrayIndex(shapeIdx)], properties);
     }
 
     /// <summary>
@@ -1391,7 +1391,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         var rootGroups = shapeTree.Elements<GroupShape>().ToList();
@@ -1475,7 +1475,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         var rootGroups = shapeTree.Elements<GroupShape>().ToList();
@@ -1495,7 +1495,7 @@ public partial class PowerPointHandler
         var innerShapes = current.Elements<Shape>().ToList();
         if (shapeIdx < 1 || shapeIdx > innerShapes.Count)
             throw new ArgumentException($"Shape {shapeIdx} not found in nested group (total: {innerShapes.Count})");
-        return ApplyShapePropsCore(slidePart, innerShapes[shapeIdx - 1], properties);
+        return ApplyShapePropsCore(slidePart, innerShapes[PathIndex.ToArrayIndex(shapeIdx)], properties);
     }
 
     /// <summary>
@@ -1524,7 +1524,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
 
@@ -1577,7 +1577,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         OpenXmlCompositeElement current = shapeTree;
@@ -1594,7 +1594,7 @@ public partial class PowerPointHandler
         var innerShapes = current.Elements<Shape>().ToList();
         if (shapeIdx < 1 || shapeIdx > innerShapes.Count)
             throw new ArgumentException($"Shape {shapeIdx} not found in group (total: {innerShapes.Count})");
-        return (slidePart, innerShapes[shapeIdx - 1]);
+        return (slidePart, innerShapes[PathIndex.ToArrayIndex(shapeIdx)]);
     }
 
     /// <summary>
@@ -1611,7 +1611,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         OpenXmlCompositeElement current = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         int depth = 0;
@@ -1635,7 +1635,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         var groups = shapeTree.Elements<GroupShape>().ToList();
@@ -1645,7 +1645,7 @@ public partial class PowerPointHandler
         var innerShapes = grp.Elements<Shape>().ToList();
         if (shapeIdx < 1 || shapeIdx > innerShapes.Count)
             throw new ArgumentException($"Shape {shapeIdx} not found in group {grpIdx} (total: {innerShapes.Count})");
-        return (slidePart, innerShapes[shapeIdx - 1]);
+        return (slidePart, innerShapes[PathIndex.ToArrayIndex(shapeIdx)]);
     }
 
     /// <summary>

@@ -65,7 +65,7 @@ public partial class PowerPointHandler
                         slideParts = GetSlideParts().ToList();
                         if (slideIdx < 1 || slideIdx > slideParts.Count)
                             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-                        slidePart = slideParts[slideIdx - 1];
+                        slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
                         var slideG = GetSlide(slidePart);
                         shapeTree = slideG.CommonSlideData?.ShapeTree
                             ?? throw new InvalidOperationException("Slide has no shape tree");
@@ -103,7 +103,7 @@ public partial class PowerPointHandler
                         if (slideIdx < 1 || slideIdx > slideParts.Count)
                             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-                        slidePart = slideParts[slideIdx - 1];
+                        slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
                         var slide = GetSlide(slidePart);
                         shapeTree = slide.CommonSlideData?.ShapeTree
                             ?? throw new InvalidOperationException("Slide has no shape tree");

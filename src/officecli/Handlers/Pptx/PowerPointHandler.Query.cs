@@ -1289,7 +1289,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-        var targetSlidePart = slideParts[slideIdx - 1];
+        var targetSlidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
 
         if (!match.Groups[2].Success)
         {
@@ -1519,7 +1519,7 @@ public partial class PowerPointHandler
         var shapes = shapeTree.Elements<Shape>().ToList();
         if (shapeIdx < 1 || shapeIdx > shapes.Count)
             throw new ArgumentException($"Shape {shapeIdx} not found at {parentPathPrefix} (total: {shapes.Count})");
-        return ShapeToNode(shapes[shapeIdx - 1], slideNum: 0, shapeIdx, depth, part: null, parentPathPrefix: parentPathPrefix);
+        return ShapeToNode(shapes[PathIndex.ToArrayIndex(shapeIdx)], slideNum: 0, shapeIdx, depth, part: null, parentPathPrefix: parentPathPrefix);
     }
 
     public List<DocumentNode> Query(string selector)

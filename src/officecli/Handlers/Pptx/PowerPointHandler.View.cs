@@ -839,7 +839,7 @@ public partial class PowerPointHandler
                 // or an incidental graze never trips it.
                 if (!string.IsNullOrWhiteSpace(offText) && shapeIdx - 1 < allBoxes.Count)
                 {
-                    var ab = allBoxes[shapeIdx - 1];
+                    var ab = allBoxes[PathIndex.ToArrayIndex(shapeIdx)];
                     long aArea = ab.w * ab.h;
                     if (aArea > 0)
                     {

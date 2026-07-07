@@ -62,7 +62,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
 
@@ -175,7 +175,7 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Anchor slide not found: {anchorPath} (total slides: {slideParts.Count})");
-            OpenXmlCompositeElement? anchorContainer = GetSlide(slideParts[slideIdx - 1]).CommonSlideData?.ShapeTree;
+            OpenXmlCompositeElement? anchorContainer = GetSlide(slideParts[PathIndex.ToArrayIndex(slideIdx)]).CommonSlideData?.ShapeTree;
             if (anchorContainer != null && !string.IsNullOrEmpty(elemGroupChain))
             {
                 foreach (Match gm in Regex.Matches(elemGroupChain, @"/group\[(\d+)\]"))
@@ -312,7 +312,7 @@ public partial class PowerPointHandler
                 var slideParts = GetSlideParts().ToList();
                 if (slideIdx < 1 || slideIdx > slideParts.Count)
                     throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-                var slidePart = slideParts[slideIdx - 1];
+                var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
                 shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
                 if (shapeTree == null)
                     throw new ArgumentException($"Slide {slideIdx} has no shape tree");
@@ -405,7 +405,7 @@ public partial class PowerPointHandler
             var slideIdx = int.Parse(slideMatch.Groups[1].Value);
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count) return 0;
-            var slidePart = slideParts[slideIdx - 1];
+            var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
             var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
             if (shapeTree == null) return 0;
 

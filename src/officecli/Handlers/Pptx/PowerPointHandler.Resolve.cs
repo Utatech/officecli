@@ -23,7 +23,7 @@ public partial class PowerPointHandler
     {
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count) return null;
-        var shapeTree = GetSlide(slideParts[slideIdx - 1]).CommonSlideData?.ShapeTree;
+        var shapeTree = GetSlide(slideParts[PathIndex.ToArrayIndex(slideIdx)]).CommonSlideData?.ShapeTree;
         if (shapeTree == null) return null;
         var shapes = shapeTree.Elements<Shape>().ToList();
         for (int i = 0; i < shapes.Count; i++)
@@ -40,7 +40,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException($"Slide {slideIdx} has no shapes");
 
@@ -48,7 +48,7 @@ public partial class PowerPointHandler
         if (shapeIdx < 1 || shapeIdx > shapes.Count)
             throw new ArgumentException($"Shape {shapeIdx} not found (total: {shapes.Count})");
 
-        return (slidePart, shapes[shapeIdx - 1]);
+        return (slidePart, shapes[PathIndex.ToArrayIndex(shapeIdx)]);
     }
 
     private (SlidePart slidePart, GraphicFrame gf, ChartPart? chartPart, ExtendedChartPart? extChartPart) ResolveChart(int slideIdx, int chartIdx)
@@ -57,7 +57,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException($"Slide {slideIdx} has no shapes");
 
@@ -138,7 +138,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException($"Slide {slideIdx} has no shapes");
 
@@ -200,7 +200,7 @@ public partial class PowerPointHandler
             var slideParts = GetSlideParts().ToList();
             if (slideIdx < 1 || slideIdx > slideParts.Count)
                 throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-            var slidePart = slideParts[slideIdx - 1];
+            var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
             OpenXmlElement current = ResolvePlaceholderShape(slidePart, phId);
 
             if (!string.IsNullOrEmpty(rest))

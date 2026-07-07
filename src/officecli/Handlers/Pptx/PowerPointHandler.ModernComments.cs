@@ -151,7 +151,7 @@ public partial class PowerPointHandler
         if (!int.TryParse(m.Groups[2].Value, out var cmIdx)) return null;
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count) return null;
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
         var all = EnumerateSlideModernComments(slidePart);
         if (cmIdx < 1 || cmIdx > all.Count) return null;
         var (cp, cm) = all[cmIdx - 1];
@@ -242,7 +242,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-        var slidePart = slideParts[slideIdx - 1];
+        var slidePart = slideParts[PathIndex.ToArrayIndex(slideIdx)];
 
         var text = properties.GetValueOrDefault("text") ?? "";
         XmlTextValidator.ValidateOrThrow(text, "text");

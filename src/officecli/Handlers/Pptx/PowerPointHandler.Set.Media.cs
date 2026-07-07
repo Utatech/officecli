@@ -24,7 +24,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts3.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts3.Count})");
 
-        var slidePart = slideParts3[slideIdx - 1];
+        var slidePart = slideParts3[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
         var pics = shapeTree.Elements<Picture>().ToList();
@@ -541,7 +541,7 @@ public partial class PowerPointHandler
         var zmSlideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > zmSlideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {zmSlideParts.Count})");
-        var zmSlidePart = zmSlideParts[slideIdx - 1];
+        var zmSlidePart = zmSlideParts[PathIndex.ToArrayIndex(slideIdx)];
         var zmShapeTree = GetSlide(zmSlidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
         var zoomElements = GetZoomElements(zmShapeTree);
@@ -698,7 +698,7 @@ public partial class PowerPointHandler
         var m3dSlideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > m3dSlideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {m3dSlideParts.Count})");
-        var m3dSlidePart = m3dSlideParts[slideIdx - 1];
+        var m3dSlidePart = m3dSlideParts[PathIndex.ToArrayIndex(slideIdx)];
         var m3dShapeTree = GetSlide(m3dSlidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
         var model3dElements = GetModel3DElements(m3dShapeTree);
@@ -964,7 +964,7 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts4.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts4.Count})");
 
-        var slidePart = slideParts4[slideIdx - 1];
+        var slidePart = slideParts4[PathIndex.ToArrayIndex(slideIdx)];
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new ArgumentException("Slide has no shape tree");
 

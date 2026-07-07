@@ -21,7 +21,7 @@ public partial class PowerPointHandler
         var slidePartsN = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slidePartsN.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slidePartsN.Count})");
-        var notesPart = EnsureNotesSlidePart(slidePartsN[slideIdx - 1]);
+        var notesPart = EnsureNotesSlidePart(slidePartsN[PathIndex.ToArrayIndex(slideIdx)]);
         var unsupportedN = new List<string>();
         // Pull the notes body shape (idx=1 placeholder) so run-level keys
         // (lang, lang.*, font, size, color, …) route through the same
@@ -316,7 +316,7 @@ public partial class PowerPointHandler
         var slideParts2 = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts2.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts2.Count})");
-        var slidePart2 = slideParts2[slideIdx - 1];
+        var slidePart2 = slideParts2[PathIndex.ToArrayIndex(slideIdx)];
         var slide2 = GetSlide(slidePart2);
 
         var unsupported = new List<string>();

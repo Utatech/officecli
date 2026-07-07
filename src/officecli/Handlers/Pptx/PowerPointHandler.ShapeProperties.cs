@@ -3858,10 +3858,10 @@ public partial class PowerPointHandler
         int shapeIdx = int.Parse(match.Groups[2].Value);
         var slideParts = _doc.PresentationPart?.SlideParts?.ToList();
         if (slideParts == null || slideIdx < 1 || slideIdx > slideParts.Count) return null;
-        var shapeTree = slideParts[slideIdx - 1].Slide?.CommonSlideData?.ShapeTree;
+        var shapeTree = slideParts[PathIndex.ToArrayIndex(slideIdx)].Slide?.CommonSlideData?.ShapeTree;
         var shapes = shapeTree?.Elements<Shape>().ToList();
         if (shapes == null || shapeIdx < 1 || shapeIdx > shapes.Count) return null;
-        return CheckTextOverflow(shapes[shapeIdx - 1]);
+        return CheckTextOverflow(shapes[PathIndex.ToArrayIndex(shapeIdx)]);
     }
 
     /// <summary>

@@ -705,7 +705,7 @@ public partial class WordHandler
                 $"bookmark name '{bkName}' contains an embedded double-quote — kept " +
                 "(OOXML allows it), but it cannot be addressed by /bookmark[@name=...]; " +
                 "use a positional bookmarkStart[N] selector instead.");
-            var pos = container.Descendants<BookmarkStart>().ToList().IndexOf(bookmarkStart) + 1;
+            var pos = PathIndex.FromArrayIndex(container.Descendants<BookmarkStart>().ToList().IndexOf(bookmarkStart));
             return $"bookmarkStart[{(pos > 0 ? pos : 1)}]";
         }
 
@@ -2154,7 +2154,7 @@ public partial class WordHandler
             var rewrite = MaterializeInlinedParts(carrierHost, properties, "sdt");
             var sdtBlock = new SdtBlock(rewrite(sdtCarrierXml));
             AppendToParent(parent, sdtBlock);
-            var sdtIdx2 = parent.Elements<SdtBlock>().ToList().IndexOf(sdtBlock) + 1;
+            var sdtIdx2 = PathIndex.FromArrayIndex(parent.Elements<SdtBlock>().ToList().IndexOf(sdtBlock));
             return $"{parentPath}/sdt[{sdtIdx2}]";
         }
 

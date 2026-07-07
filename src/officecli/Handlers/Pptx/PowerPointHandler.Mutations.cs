@@ -2146,38 +2146,38 @@ public partial class PowerPointHandler
             if (gf.Descendants<Drawing.Table>().Any())
             {
                 typeName = "table";
-                typeIdx = shapeTree.Elements<GraphicFrame>()
+                typeIdx = PathIndex.FromArrayIndex(shapeTree.Elements<GraphicFrame>()
                     .Where(f => f.Descendants<Drawing.Table>().Any())
-                    .ToList().IndexOf(gf) + 1;
+                    .ToList().IndexOf(gf));
             }
             else if (gf.Descendants<C.ChartReference>().Any())
             {
                 typeName = "chart";
-                typeIdx = shapeTree.Elements<GraphicFrame>()
+                typeIdx = PathIndex.FromArrayIndex(shapeTree.Elements<GraphicFrame>()
                     .Where(f => f.Descendants<C.ChartReference>().Any())
-                    .ToList().IndexOf(gf) + 1;
+                    .ToList().IndexOf(gf));
             }
             else if (gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
             {
                 typeName = "ole";
-                typeIdx = shapeTree.Elements<GraphicFrame>()
+                typeIdx = PathIndex.FromArrayIndex(shapeTree.Elements<GraphicFrame>()
                     .Where(f => f.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
-                    .ToList().IndexOf(gf) + 1;
+                    .ToList().IndexOf(gf));
             }
             else
             {
                 typeName = element.LocalName;
-                typeIdx = shapeTree.ChildElements
+                typeIdx = PathIndex.FromArrayIndex(shapeTree.ChildElements
                     .Where(e => e.LocalName == element.LocalName)
-                    .ToList().IndexOf(element) + 1;
+                    .ToList().IndexOf(element));
             }
         }
         else
         {
             typeName = element.LocalName;
-            typeIdx = shapeTree.ChildElements
+            typeIdx = PathIndex.FromArrayIndex(shapeTree.ChildElements
                 .Where(e => e.LocalName == element.LocalName)
-                .ToList().IndexOf(element) + 1;
+                .ToList().IndexOf(element));
         }
         return $"{parentPath}/{BuildElementPathSegment(typeName, element, typeIdx)}";
     }

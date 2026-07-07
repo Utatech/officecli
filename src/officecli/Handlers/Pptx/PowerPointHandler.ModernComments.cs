@@ -311,8 +311,8 @@ public partial class PowerPointHandler
         part.CommentList!.AppendChild(cm);
         part.CommentList.Save();
 
-        var addedIdx = EnumerateSlideModernComments(slidePart)
-            .Select(t => t.cm).ToList().IndexOf(cm) + 1;
+        var addedIdx = PathIndex.FromArrayIndex(EnumerateSlideModernComments(slidePart)
+            .Select(t => t.cm).ToList().IndexOf(cm));
         return $"/slide[{slideIdx}]/modernComment[{addedIdx}]";
     }
 

@@ -2874,7 +2874,7 @@ public partial class WordHandler
             }
             else
             {
-                var runCount = GetAllRuns(targetPara).IndexOf(newRun) + 1;
+                var runCount = PathIndex.FromArrayIndex(GetAllRuns(targetPara).IndexOf(newRun));
                 resultPath = $"{ReplaceTrailingParaSegment(parentPath, targetPara)}/r[{runCount}]";
             }
         }

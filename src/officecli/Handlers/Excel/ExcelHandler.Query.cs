@@ -185,7 +185,7 @@ public partial class ExcelHandler
                     d.Name?.Value?.Equals(selector, StringComparison.OrdinalIgnoreCase) == true);
                 if (dn == null)
                     return new DocumentNode { Path = path, Type = "error", Text = $"Named range '{selector}' not found" };
-                dnIndex = allDefs.IndexOf(dn) + 1;
+                dnIndex = PathIndex.FromArrayIndex(allDefs.IndexOf(dn));
             }
 
             var nrNode = new DocumentNode

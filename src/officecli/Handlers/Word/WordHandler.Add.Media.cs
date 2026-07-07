@@ -1490,7 +1490,7 @@ public partial class WordHandler
             if (parentParaInline != null)
             {
                 var runs = GetAllRuns(parentParaInline);
-                var runIdxInline = runs.IndexOf(oleRun) + 1;
+                var runIdxInline = PathIndex.FromArrayIndex(runs.IndexOf(oleRun));
                 // CONSISTENCY(para-path-canonical): canonicalize when the
                 // SDT lives directly inside a paragraph (parentPath ends in
                 // /p[...]); otherwise (SDT in a cell) parentPath does not

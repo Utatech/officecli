@@ -466,7 +466,7 @@ public partial class PowerPointHandler
     {
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Slide has no shape tree");
-        return shapeTree.Elements<ConnectionShape>().ToList().IndexOf(cxn) + 1;
+        return PathIndex.FromArrayIndex(shapeTree.Elements<ConnectionShape>().ToList().IndexOf(cxn));
     }
 
     // R57 bt-4: locate the connector's <p:txBody> (lazily creating one when

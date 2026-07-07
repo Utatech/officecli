@@ -1641,9 +1641,9 @@ public partial class WordHandler
         var parentPath = lastSlash > 0 ? path1[..lastSlash] : "/body";
 
         var siblings1 = parent.ChildElements.Where(e => e.LocalName == elem1.LocalName).ToList();
-        var newIdx1 = siblings1.IndexOf(elem1) + 1;
+        var newIdx1 = PathIndex.FromArrayIndex(siblings1.IndexOf(elem1));
         var siblings2 = parent.ChildElements.Where(e => e.LocalName == elem2.LocalName).ToList();
-        var newIdx2 = siblings2.IndexOf(elem2) + 1;
+        var newIdx2 = PathIndex.FromArrayIndex(siblings2.IndexOf(elem2));
         return ($"{parentPath}/{elem1.LocalName}[{newIdx1}]", $"{parentPath}/{elem2.LocalName}[{newIdx2}]");
     }
 

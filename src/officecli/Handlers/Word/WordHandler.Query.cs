@@ -239,7 +239,7 @@ public partial class WordHandler
                     ff.FfData.GetFirstChild<FormFieldName>()?.Val?.Value == indexOrName);
                 if (match.Field == null)
                     return new DocumentNode { Path = path, Type = "error", Text = $"FormField '{indexOrName}' not found" };
-                var idx = allFormFields.IndexOf(match) + 1;
+                var idx = PathIndex.FromArrayIndex(allFormFields.IndexOf(match));
                 return FormFieldToNode(match, $"/formfield[{idx}]");
             }
         }

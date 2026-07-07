@@ -566,7 +566,7 @@ public partial class ExcelHandler
         dvs.Count = (uint)dvs.Elements<DataValidation>().Count();
 
         SaveWorksheet(dvWorksheet);
-        var dvIndex = dvs.Elements<DataValidation>().ToList().IndexOf(dv) + 1;
+        var dvIndex = PathIndex.FromArrayIndex(dvs.Elements<DataValidation>().ToList().IndexOf(dv));
         // CONSISTENCY(path-segment-naming): the path segment must match the
         // type name the caller used in `add` (`dataValidation`). The legacy
         // `/validation[N]` form remains accepted by Get / Set / Remove as an

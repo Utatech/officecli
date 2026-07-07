@@ -5508,7 +5508,7 @@ public partial class WordHandler
                     var peNode = new DocumentNode
                     {
                         Type = "permEnd",
-                        Path = $"{path}/permEnd[{paraPermEnds.IndexOf(pe) + 1}]",
+                        Path = $"{path}/permEnd[{PathIndex.FromArrayIndex(paraPermEnds.IndexOf(pe))}]",
                     };
                     if (pe.Id?.Value != null) peNode.Format["id"] = pe.Id.Value.ToString();
                     node.Children.Add(peNode);

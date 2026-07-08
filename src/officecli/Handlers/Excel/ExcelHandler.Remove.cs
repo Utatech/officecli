@@ -220,6 +220,29 @@ public partial class ExcelHandler
                         $"Remove or repoint the pivot table first.");
             }
 
+            // CONSISTENCY(remove-sheet-refs): a pivot table hosted on the
+            // sheet about to disappear may itself be named by a slicer cache
+            // living on another sheet (SlicerCachePivotTables). Removing the
+            // sheet orphans the pivot and leaves the slicer cache pointing at
+            // a gone pivot — schema-valid but real Excel refuses (0x800A03EC).
+            // Mirror the pivottable[N] guard: refuse and steer the user to
+            // remove the slicer first. Note the mirror case (removing the
+            // sheet that hosts the *slicer*, pivot elsewhere) is untouched and
+            // remains a safe delete.
+            {
+                var relIdForSlicerCheck = sheet.Id?.Value;
+                var wsForSlicerCheck = relIdForSlicerCheck != null
+                    ? workbookPart.GetPartById(relIdForSlicerCheck) as WorksheetPart
+                    : null;
+                if (wsForSlicerCheck != null)
+                    foreach (var pp in wsForSlicerCheck.PivotTableParts)
+                        ThrowIfPivotReferencedBySlicer(
+                            pp.PivotTableDefinition?.Name?.Value,
+                            (pivotName, cacheName) =>
+                                $"Cannot remove sheet '{sheetName}': it hosts pivot table '{pivotName}' " +
+                                $"which is referenced by slicer cache '{cacheName}'. Remove the slicer first.");
+            }
+
             // R10-2: capture pivot cache definitions referenced by this
             // sheet's pivot table parts BEFORE deleting the worksheet part,
             // so we can prune any caches that become orphaned by the
@@ -705,21 +728,11 @@ public partial class ExcelHandler
             // leaves a dangling reference that passes schema validation but
             // real Excel refuses (0x800A03EC). Mirrors the sheet-remove
             // pivot-source protection.
-            var removedPivotName = pivotPart.PivotTableDefinition?.Name?.Value;
-            if (!string.IsNullOrEmpty(removedPivotName) && _doc.WorkbookPart != null)
-            {
-                foreach (var scPart in _doc.WorkbookPart.GetPartsOfType<SlicerCachePart>())
-                {
-                    var refsPivot = scPart.SlicerCacheDefinition?
-                        .GetFirstChild<X14.SlicerCachePivotTables>()?
-                        .Elements<X14.SlicerCachePivotTable>()
-                        .Any(pt => string.Equals(pt.Name?.Value, removedPivotName, StringComparison.OrdinalIgnoreCase)) == true;
-                    if (refsPivot)
-                        throw new ArgumentException(
-                            $"Cannot remove pivottable '{removedPivotName}': it is referenced by slicer cache " +
-                            $"'{scPart.SlicerCacheDefinition?.Name?.Value}'. Remove the slicer first.");
-                }
-            }
+            ThrowIfPivotReferencedBySlicer(
+                pivotPart.PivotTableDefinition?.Name?.Value,
+                (pivotName, cacheName) =>
+                    $"Cannot remove pivottable '{pivotName}': it is referenced by slicer cache " +
+                    $"'{cacheName}'. Remove the slicer first.");
 
             // Capture the cache-definition part (if any) so we can clean up
             // workbook-level PivotCache registration after removing the pivot.
@@ -971,6 +984,26 @@ public partial class ExcelHandler
         DeleteCalcChainIfPresent();
         SaveWorksheet(worksheet);
         return null;
+    }
+
+    // Referencing-slicer guard — a slicer cache names its pivot table via
+    // SlicerCachePivotTables; deleting that pivot (directly, or by removing
+    // the sheet that hosts it) leaves a dangling reference that passes schema
+    // validation but real Excel refuses to open (0x800A03EC). Shared by the
+    // pivottable[N] branch and the whole-sheet removal path.
+    private void ThrowIfPivotReferencedBySlicer(string? pivotName, Func<string, string, string> message)
+    {
+        if (string.IsNullOrEmpty(pivotName) || _doc.WorkbookPart == null) return;
+        foreach (var scPart in _doc.WorkbookPart.GetPartsOfType<SlicerCachePart>())
+        {
+            var refsPivot = scPart.SlicerCacheDefinition?
+                .GetFirstChild<X14.SlicerCachePivotTables>()?
+                .Elements<X14.SlicerCachePivotTable>()
+                .Any(pt => string.Equals(pt.Name?.Value, pivotName, StringComparison.OrdinalIgnoreCase)) == true;
+            if (refsPivot)
+                throw new ArgumentException(
+                    message(pivotName, scPart.SlicerCacheDefinition?.Name?.Value ?? "?"));
+        }
     }
 
     // Trailing /row[N] index of a path, or 0 when the path is not a row. Used to
@@ -1348,6 +1381,17 @@ public partial class ExcelHandler
             if (!columns.HasChildren) columns.Remove();
         }
 
+        // 2b. table (ListObject) column sync. Deleting a worksheet column that
+        // falls inside a table's range shrinks the table ref (handled by the
+        // walker below) but ALSO drops one table column — the <tableColumns
+        // count=".."> and its <tableColumn> children must follow, or Excel
+        // refuses to open (0x800A03EC) even though schema validation passes.
+        // Mirrors Excel: deleting a sheet column narrows the table; deleting
+        // the table's only column removes the table entirely. Done here (not in
+        // the shared walker) because it is column-axis-specific and needs the
+        // pre-shift ref to locate the column position.
+        SyncTableColumnsAfterColDelete(worksheet, deletedColIdx);
+
         // 3. All sheet-level range-bearing structures + formulas + namedRanges.
         ApplySheetRangeMutations(
             worksheet, sheetName,
@@ -1355,6 +1399,71 @@ public partial class ExcelHandler
             formulaTextMapper: f => Core.FormulaRefShifter.Shift(
                 f, sheetName, sheetName, Core.FormulaShiftDirection.ColumnsLeft, deletedColIdx),
             colMarkerShift: m => m > deletedColIdx - 1 ? m - 1 : m);
+    }
+
+    /// <summary>
+    /// After a worksheet column delete, keep every table (ListObject) on the
+    /// sheet structurally consistent: if the deleted column falls inside a
+    /// table's range, remove the corresponding &lt;tableColumn&gt; child and
+    /// decrement the count. If it was the table's only column, remove the whole
+    /// table (part + TableParts entry), matching Excel's "delete the last
+    /// column, the table disappears" behavior.
+    /// </summary>
+    private void SyncTableColumnsAfterColDelete(WorksheetPart worksheet, int deletedColIdx)
+    {
+        var tableParts = worksheet.TableDefinitionParts.ToList();
+        for (int i = 0; i < tableParts.Count; i++)
+        {
+            var tablePart = tableParts[i];
+            var tbl = tablePart.Table;
+            var refStr = tbl?.Reference?.Value;
+            if (tbl == null || string.IsNullOrEmpty(refStr)) continue;
+
+            var rangeParts = refStr.Split(':');
+            int startColIdx, endColIdx;
+            try
+            {
+                startColIdx = ColumnNameToIndex(ParseCellReference(rangeParts[0]).Column);
+                endColIdx = rangeParts.Length > 1
+                    ? ColumnNameToIndex(ParseCellReference(rangeParts[1]).Column)
+                    : startColIdx;
+            }
+            catch { continue; }
+
+            // Deleted column outside the table span → nothing to sync (the
+            // walker still shifts the ref if the table sits to the right).
+            if (deletedColIdx < startColIdx || deletedColIdx > endColIdx) continue;
+
+            // Last remaining column removed → the table disappears entirely.
+            if (startColIdx == endColIdx)
+            {
+                var tblIndex = i + 1; // 1-based position among TableParts
+                worksheet.DeletePart(tablePart);
+                var tblParts = worksheet.Worksheet?.GetFirstChild<TableParts>();
+                if (tblParts != null)
+                {
+                    var entries = tblParts.Elements<TablePart>().ToList();
+                    if (tblIndex <= entries.Count) entries[tblIndex - 1].Remove();
+                    tblParts.Count = (uint)tblParts.Elements<TablePart>().Count();
+                    if (tblParts.Count == 0) tblParts.Remove();
+                }
+                continue;
+            }
+
+            // Drop the table column at the deleted position (0-based within the
+            // table). The walker shrinks tbl.Reference; here we only sync the
+            // column list + count.
+            var tableColumns = tbl.TableColumns;
+            if (tableColumns == null) continue;
+            var cols = tableColumns.Elements<TableColumn>().ToList();
+            var pos = deletedColIdx - startColIdx;
+            if (pos >= 0 && pos < cols.Count)
+            {
+                cols[pos].Remove();
+                tableColumns.Count = (uint)tableColumns.Elements<TableColumn>().Count();
+                tbl.Save();
+            }
+        }
     }
 
     // ==================== Shift helpers ====================

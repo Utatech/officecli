@@ -123,6 +123,39 @@ static partial class CommandBuilder
         serveCommand.SetAction(result =>
         {
             var file = result.GetValue(serveFileArg)!;
+            // Per-file singleton guard. TryResident's probe-then-spawn has an
+            // inherent race: N clients probing an un-owned file concurrently
+            // all fail the ping and all spawn a resident. Each spawned server
+            // held its own full in-memory copy and whole-file-overwrote on
+            // flush — concurrent writers silently lost every edit except the
+            // last flusher's (observed: 40 parallel sets → 0-2 cells on
+            // disk, all reporting success). Acquire an exclusive lock file
+            // BEFORE opening the document; losers exit quietly and their
+            // clients reconnect to the winner via the re-probe in
+            // TryResident.
+            FileStream? residentLock = null;
+            var lockPath = Path.Combine(Path.GetTempPath(),
+                ResidentServer.GetPipeName(file.FullName) + ".lock");
+            for (int attempt = 0; attempt < 3 && residentLock == null; attempt++)
+            {
+                try
+                {
+                    residentLock = new FileStream(lockPath, FileMode.OpenOrCreate,
+                        FileAccess.ReadWrite, FileShare.None,
+                        bufferSize: 1, FileOptions.DeleteOnClose);
+                }
+                catch (IOException)
+                {
+                    // Another resident holds (or is acquiring) the lock. If it
+                    // is already serving, we're redundant — exit and let the
+                    // client reconnect. Brief retry covers the window where
+                    // the winner crashed without deleting the lock.
+                    if (ResidentClient.TryConnect(file.FullName, out var winnerPipe)) return;
+                    Thread.Sleep(150);
+                }
+            }
+            if (residentLock == null) return;
+            using var heldLock = residentLock;
             using var server = new ResidentServer(file.FullName);
             server.RunAsync().GetAwaiter().GetResult();
         });

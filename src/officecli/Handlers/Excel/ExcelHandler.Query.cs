@@ -1676,10 +1676,7 @@ public partial class ExcelHandler
                 var drawingsPart = worksheetPart.DrawingsPart;
                 if (drawingsPart?.WorksheetDrawing == null) continue;
 
-                var picAnchors = drawingsPart.WorksheetDrawing
-                    .Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
-                    .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
-                    .ToList();
+                var picAnchors = EnumeratePictureAnchors(drawingsPart.WorksheetDrawing).ToList();
 
                 for (int i = 0; i < picAnchors.Count; i++)
                 {
@@ -1710,10 +1707,7 @@ public partial class ExcelHandler
                 var drawingsPart = worksheetPart.DrawingsPart;
                 if (drawingsPart?.WorksheetDrawing == null) continue;
 
-                var picAnchors = drawingsPart.WorksheetDrawing
-                    .Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
-                    .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
-                    .ToList();
+                var picAnchors = EnumeratePictureAnchors(drawingsPart.WorksheetDrawing).ToList();
 
                 for (int i = 0; i < picAnchors.Count; i++)
                 {

@@ -471,9 +471,7 @@ public partial class ExcelHandler
                 ?? throw new ArgumentException("Sheet has no drawings/pictures");
             var wsDrawing = drawingsPart.WorksheetDrawing
                 ?? throw new ArgumentException("Sheet has no drawings/pictures");
-            var picAnchors = wsDrawing.Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
-                .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
-                .ToList();
+            var picAnchors = EnumeratePictureAnchors(wsDrawing).ToList();
             if (picIdx < 1 || picIdx > picAnchors.Count)
                 throw new ArgumentException($"Picture index {picIdx} out of range (1..{picAnchors.Count})");
             // Remove associated image part to avoid storage bloat

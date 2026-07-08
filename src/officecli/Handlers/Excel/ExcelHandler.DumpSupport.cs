@@ -621,8 +621,7 @@ public partial class ExcelHandler
             ?? throw new ArgumentException($"Sheet not found: {sheetName}");
         var wsDrawing = worksheet.DrawingsPart?.WorksheetDrawing;
         if (wsDrawing == null) return (0, 0);
-        var pictures = wsDrawing.Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
-            .Count(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any());
+        var pictures = EnumeratePictureAnchors(wsDrawing).Count();
         var shapes = EnumerateLeafShapes(wsDrawing).Count();
         return (pictures, shapes);
     }
@@ -636,15 +635,17 @@ public partial class ExcelHandler
     /// HasFromOffset flags anchors whose From marker carries a non-zero
     /// offset (real-Excel-authored); the add vocabulary cannot express that,
     /// so the emitter surfaces it as a warning.</summary>
-    public sealed record DumpAnchorEmu(int X, int Y, long WidthEmu, long HeightEmu, bool HasFromOffset);
+    /// <summary>Mode is the anchor kind ("twoCell" / "oneCell" / "absolute").
+    /// For absolute anchors X/Y are unused; XEmu/YEmu carry the EMU position
+    /// (the add vocabulary takes x/y as EMU for anchorMode=absolute).</summary>
+    public sealed record DumpAnchorEmu(int X, int Y, long WidthEmu, long HeightEmu, bool HasFromOffset,
+        string Mode = "twoCell", long XEmu = 0, long YEmu = 0);
 
     public DumpAnchorEmu? GetDumpPictureAnchorEmu(string sheetName, int index)
     {
         var wsDrawing = FindWorksheet(sheetName)?.DrawingsPart?.WorksheetDrawing;
         if (wsDrawing == null) return null;
-        var picAnchors = wsDrawing.Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
-            .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
-            .ToList();
+        var picAnchors = EnumeratePictureAnchors(wsDrawing).ToList();
         if (index < 1 || index > picAnchors.Count) return null;
         return AnchorToEmuRect(picAnchors[index - 1]);
     }
@@ -658,9 +659,31 @@ public partial class ExcelHandler
         return AnchorToEmuRect(shapes[index - 1].anchor);
     }
 
-    private static DumpAnchorEmu? AnchorToEmuRect(
-        DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor anchor)
+    private static DumpAnchorEmu? AnchorToEmuRect(OpenXmlCompositeElement anchorEl)
     {
+        // oneCell / absolute anchors carry size in <xdr:ext> (EMU) instead of
+        // a To marker; absolute additionally carries position as EMU <xdr:pos>.
+        if (anchorEl is DocumentFormat.OpenXml.Drawing.Spreadsheet.OneCellAnchor one)
+        {
+            var oFrom = one.FromMarker;
+            var oExt = one.GetFirstChild<DocumentFormat.OpenXml.Drawing.Spreadsheet.Extent>();
+            if (oFrom == null || oExt?.Cx?.HasValue != true || oExt.Cy?.HasValue != true) return null;
+            static int OP(string? s) => int.TryParse(s, out var v) ? v : 0;
+            static long OPL(string? s) => long.TryParse(s, out var v) ? v : 0;
+            return new DumpAnchorEmu(OP(oFrom.ColumnId?.Text), OP(oFrom.RowId?.Text),
+                oExt.Cx.Value, oExt.Cy.Value,
+                OPL(oFrom.ColumnOffset?.Text) != 0 || OPL(oFrom.RowOffset?.Text) != 0,
+                Mode: "oneCell");
+        }
+        if (anchorEl is DocumentFormat.OpenXml.Drawing.Spreadsheet.AbsoluteAnchor abs)
+        {
+            var aPos = abs.GetFirstChild<DocumentFormat.OpenXml.Drawing.Spreadsheet.Position>();
+            var aExt = abs.GetFirstChild<DocumentFormat.OpenXml.Drawing.Spreadsheet.Extent>();
+            if (aExt?.Cx?.HasValue != true || aExt.Cy?.HasValue != true) return null;
+            return new DumpAnchorEmu(0, 0, aExt.Cx.Value, aExt.Cy.Value, false,
+                Mode: "absolute", XEmu: aPos?.X?.Value ?? 0, YEmu: aPos?.Y?.Value ?? 0);
+        }
+        if (anchorEl is not DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor anchor) return null;
         var from = anchor.FromMarker;
         var to = anchor.ToMarker;
         if (from == null || to == null) return null;
@@ -687,9 +710,7 @@ public partial class ExcelHandler
         var drawingsPart = worksheet?.DrawingsPart;
         var wsDrawing = drawingsPart?.WorksheetDrawing;
         if (worksheet == null || drawingsPart == null || wsDrawing == null) return null;
-        var picAnchors = wsDrawing.Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
-            .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
-            .ToList();
+        var picAnchors = EnumeratePictureAnchors(wsDrawing).ToList();
         if (index < 1 || index > picAnchors.Count) return null;
         var picture = picAnchors[index - 1]
             .Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().First();

@@ -266,8 +266,7 @@ public partial class ExcelHandler
         var wsDrawing = drawingsPart.WorksheetDrawing
             ?? throw new ArgumentException("Sheet has no drawings/pictures");
 
-        var picAnchors = wsDrawing.Elements<XDR.TwoCellAnchor>()
-            .Where(a => a.Descendants<XDR.Picture>().Any()).ToList();
+        var picAnchors = EnumeratePictureAnchors(wsDrawing).ToList();
         if (picIdx < 1 || picIdx > picAnchors.Count)
             throw new ArgumentException($"Picture index {picIdx} out of range (1..{picAnchors.Count})");
 

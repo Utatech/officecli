@@ -521,8 +521,20 @@ public static partial class ExcelBatchEmitter
             var picAnchor = xl.GetDumpPictureAnchorEmu(sheetName, i);
             if (picAnchor != null)
             {
-                props["x"] = picAnchor.X.ToString();
-                props["y"] = picAnchor.Y.ToString();
+                if (picAnchor.Mode == "absolute")
+                {
+                    // Absolute anchors position by EMU <xdr:pos>, and the add
+                    // vocabulary takes x/y as EMU for anchorMode=absolute.
+                    props["anchorMode"] = "absolute";
+                    props["x"] = $"{picAnchor.XEmu}emu";
+                    props["y"] = $"{picAnchor.YEmu}emu";
+                }
+                else
+                {
+                    if (picAnchor.Mode == "oneCell") props["anchorMode"] = "oneCell";
+                    props["x"] = picAnchor.X.ToString();
+                    props["y"] = picAnchor.Y.ToString();
+                }
                 props["width"] = $"{picAnchor.WidthEmu}emu";
                 props["height"] = $"{picAnchor.HeightEmu}emu";
                 if (picAnchor.HasFromOffset)
@@ -538,6 +550,7 @@ public static partial class ExcelBatchEmitter
             }
             CopyString(pic, "alt", props, "alt");
             CopyString(pic, "name", props, "name");
+            CopyString(pic, "title", props, "title");
             CopyValue(pic, "rotation", props, "rotation");
             CopyString(pic, "flip", props, "flip");
             CopyString(pic, "crop", props, "crop");
@@ -569,6 +582,7 @@ public static partial class ExcelBatchEmitter
             CopyString(shp, "name", props, "name");
             CopyString(shp, "geometry", props, "preset");
             CopyString(shp, "fill", props, "fill");
+            CopyString(shp, "gradientFill", props, "gradientFill");
             CopyValue(shp, "x", props, "x");
             CopyValue(shp, "y", props, "y");
             CopyValue(shp, "width", props, "width");

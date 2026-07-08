@@ -93,6 +93,12 @@ public static partial class ExcelBatchEmitter
             CopyString(t, "name", props, "name");
             CopyString(t, "displayName", props, "displayName");
             CopyString(t, "style", props, "style");
+            // A table with no tableStyleInfo renders plain; AddTable defaults
+            // to TableStyleMedium2, so an omitted style key restyled the
+            // replayed table (visible SSIM drift on externally-authored
+            // files). Emit the explicit `none` alias to preserve plainness.
+            if (!props.ContainsKey("style"))
+                props["style"] = "none";
             // headerRow defaults true on Add; totalRow defaults false — emit
             // only the non-default direction to keep round-trip idempotent.
             if (t.Format.TryGetValue("headerRow", out var hr) && hr is bool hrB && !hrB)
@@ -406,6 +412,18 @@ public static partial class ExcelBatchEmitter
             {
                 props.Remove("data");
                 props.Remove("categories");
+                // BuildChartProps also emits combined literal `series{N}` keys
+                // ("Name:1,2,3"). For externally-authored files whose series
+                // carry no numCache the values half is empty, producing a
+                // malformed dangling-colon spec ("'Sheet'!B1:") — drop those;
+                // the dotted series{N}.name/.values refs below replay the
+                // series and repopulate the cache. Well-formed combined keys
+                // are kept: they carry the resolved cache literals.
+                foreach (var combinedKey in props.Keys
+                    .Where(k => System.Text.RegularExpressions.Regex.IsMatch(k, @"^series\d+$")
+                        && (props[k].Length == 0 || props[k].EndsWith(":")))
+                    .ToList())
+                    props.Remove(combinedKey);
                 for (int n = 0; n < series.Count; n++)
                 {
                     var s = series[n];

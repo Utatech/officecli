@@ -296,6 +296,15 @@ public partial class WordHandler
         var classes = new List<string>();
         if (IsTocParagraphStyle(styleId, GetStyleName(para)))
             classes.Add("toc");
+        // A paragraph that is purely an m:oMathPara wrapper is a display-math
+        // block. The body renderer wraps it in <div class="equation"> itself,
+        // but paragraphs routed through this generic tag builder (text boxes,
+        // headers/footers, SDT content) kept the default left alignment, so
+        // the same formula rendered centered in the body and left-aligned in
+        // a text box. Reuse the .equation class (text-align:center) on the
+        // <p> itself — the inner katex span already carries data-display.
+        if (IsOMathParaWrapperParagraph(para))
+            classes.Add("equation");
         // CONSISTENCY(run-special-content): paragraphs containing w:ptab
         // (header/footer left/center/right alignment) need a flex container
         // for the .ptab-spacer / .*-leader children to actually push their

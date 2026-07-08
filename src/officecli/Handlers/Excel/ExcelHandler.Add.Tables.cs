@@ -348,10 +348,14 @@ public partial class ExcelHandler
         var (colName, rowNum) = ParseCellReference(cellRef.ToUpperInvariant());
         var col0 = ColumnNameToIndex(colName) - 1; // x:Column is 0-based
         var row0 = rowNum - 1;
-        // 1025+N is Excel's conventional legacy-VML shape-id base (matches
-        // the OLE path); count existing Note shapes for N.
-        var shapeId = 1025 + System.Text.RegularExpressions.Regex.Matches(
-            xml, "ObjectType=\"Note\"").Count;
+        // Allocate max(existing _x0000_s{N})+1 so the id never collides with a
+        // surviving comment OR OLE shape (both share this namespace). Counting
+        // Note shapes reused ids after a partial remove — see Bug family (3).
+        uint shapeId = 1025;
+        foreach (System.Text.RegularExpressions.Match sm in
+            System.Text.RegularExpressions.Regex.Matches(xml, @"_x0000_s(\d+)"))
+            if (uint.TryParse(sm.Groups[1].Value, out var sid) && sid >= shapeId)
+                shapeId = sid + 1;
         // Anchor: LeftCol,LeftOff,TopRow,TopOff,RightCol,RightOff,BottomRow,BottomOff —
         // the standard "one column right, spanning ~3 rows" popup Excel writes.
         var anchor = $"{col0 + 1}, 15, {row0}, 2, {col0 + 3}, 15, {row0 + 3}, 16";
@@ -433,6 +437,42 @@ public partial class ExcelHandler
         using var writer = new System.IO.StreamWriter(vmlPart.GetStream(System.IO.FileMode.Create, System.IO.FileAccess.Write));
         writer.Write(xml);
         return true;
+    }
+
+    /// <summary>
+    /// Remove the single legacy VML Note shape anchored at <paramref name="cellRef"/>.
+    /// Used by partial comment removal so a deleted comment's popup shape does
+    /// not linger. Prefix-agnostic Row/Column match (mirrors
+    /// UpdateCommentVmlShapeRef); no-op if the shape is absent.
+    /// </summary>
+    private void RemoveCommentVmlShapeByRef(WorksheetPart worksheet, string cellRef)
+    {
+        var vmlPart = worksheet.VmlDrawingParts.FirstOrDefault();
+        if (vmlPart == null) return;
+        var (colName, rowNum) = ParseCellReference(cellRef.ToUpperInvariant());
+        int col0 = ColumnNameToIndex(colName) - 1, row0 = rowNum - 1;
+        try
+        {
+            System.Xml.Linq.XDocument vmlDoc;
+            using (var stream = vmlPart.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read))
+                vmlDoc = System.Xml.Linq.XDocument.Load(stream);
+            var vNs = (System.Xml.Linq.XNamespace)"urn:schemas-microsoft-com:vml";
+            var target = vmlDoc.Descendants(vNs + "shape").FirstOrDefault(s =>
+            {
+                var cd = s.Elements().FirstOrDefault(e => e.Name.LocalName == "ClientData");
+                if (cd == null || (string?)cd.Attribute("ObjectType") != "Note") return false;
+                var rowEl = cd.Elements().FirstOrDefault(e => e.Name.LocalName == "Row");
+                var colEl = cd.Elements().FirstOrDefault(e => e.Name.LocalName == "Column");
+                return rowEl != null && colEl != null
+                    && int.TryParse(rowEl.Value.Trim(), out var r) && r == row0
+                    && int.TryParse(colEl.Value.Trim(), out var c) && c == col0;
+            });
+            if (target == null) return;
+            target.Remove();
+            using var wstream = vmlPart.GetStream(System.IO.FileMode.Create, System.IO.FileAccess.Write);
+            vmlDoc.Save(wstream);
+        }
+        catch { }
     }
 
     private string AddValidation(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)

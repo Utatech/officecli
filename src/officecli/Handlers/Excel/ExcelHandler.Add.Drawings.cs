@@ -17,6 +17,37 @@ namespace OfficeCli.Handlers;
 // Per-element-type Add helpers for drawing/anchor paths (ole, picture, shape, slicer, sparkline). Mechanically extracted from the Add() god-method.
 public partial class ExcelHandler
 {
+    /// <summary>
+    /// Allocate the next legacy-VML shape id for a worksheet. OLE objects and
+    /// comments both live in the same <c>_x0000_s{N}</c> namespace inside a
+    /// single VmlDrawingPart, so a colliding id corrupts the file. Scans every
+    /// OleObject.ShapeId and every <c>_x0000_s(N)</c> token in the VML part and
+    /// returns max+1 (never below Excel's conventional 1025 base).
+    /// </summary>
+    private uint AllocateNextVmlShapeId(WorksheetPart worksheet)
+    {
+        uint max = 1024;
+        foreach (var ole in GetSheet(worksheet).Descendants<OleObject>())
+            if (ole.ShapeId?.HasValue == true && ole.ShapeId.Value > max)
+                max = ole.ShapeId.Value;
+        var vmlPart = worksheet.VmlDrawingParts.FirstOrDefault();
+        if (vmlPart != null)
+        {
+            try
+            {
+                string xml;
+                using (var reader = new System.IO.StreamReader(
+                    vmlPart.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read)))
+                    xml = reader.ReadToEnd();
+                foreach (Match sm in Regex.Matches(xml, @"_x0000_s(\d+)"))
+                    if (uint.TryParse(sm.Groups[1].Value, out var id) && id > max)
+                        max = id;
+            }
+            catch { }
+        }
+        return max + 1;
+    }
+
     private string AddOle(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
         var index = position?.Index;
@@ -136,10 +167,12 @@ public partial class ExcelHandler
         //    logic — Excel 2010+ renders from objectPr/anchor anyway.
         var oleVmlPart = oleWorksheet.VmlDrawingParts.FirstOrDefault()
             ?? oleWorksheet.AddNewPart<VmlDrawingPart>();
-        // Allocate a unique shapeId per worksheet (1025+N is the
-        // conventional Excel starting point for legacy VML shapes).
-        var existingOleCount = GetSheet(oleWorksheet).Descendants<OleObject>().Count();
-        uint oleShapeId = (uint)(1025 + existingOleCount);
+        // Allocate a unique shapeId per worksheet by scanning existing
+        // OleObject shapeIds and every _x0000_s(N) in the companion VML part
+        // (comments share the same id namespace), then taking max+1. A plain
+        // count of live OLE objects collides after a remove: the count falls
+        // back so a new object reuses a surviving object's shapeId.
+        uint oleShapeId = AllocateNextVmlShapeId(oleWorksheet);
         EnsureExcelVmlShapeForOle(oleVmlPart, oleShapeId, oleFromCol, oleFromRow, oleToCol, oleToRow);
 
         // Ensure worksheet references the VML drawing part.

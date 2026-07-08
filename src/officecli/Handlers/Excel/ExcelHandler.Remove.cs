@@ -586,6 +586,7 @@ public partial class ExcelHandler
             var comments = cmtList?.Elements<Comment>().ToList() ?? new();
             if (cmtIdx < 1 || cmtIdx > comments.Count)
                 throw new ArgumentException($"Comment index {cmtIdx} out of range (1..{comments.Count})");
+            var removedCommentRef = comments[cmtIdx - 1].Reference?.Value;
             comments[cmtIdx - 1].Remove();
             if (cmtList != null && !cmtList.HasChildren)
             {
@@ -643,6 +644,12 @@ public partial class ExcelHandler
             else
             {
                 commentsPart.Comments.Save();
+                // Partial delete: remove the single orphaned VML Note shape for
+                // the removed comment's cell. Without this the <v:shape> lingers
+                // and Excel renders a ghost comment box (Bug family: partial
+                // comment remove leaves orphan VML shape).
+                if (!string.IsNullOrEmpty(removedCommentRef))
+                    RemoveCommentVmlShapeByRef(worksheet, removedCommentRef);
             }
             SaveWorksheet(worksheet);
             return null;

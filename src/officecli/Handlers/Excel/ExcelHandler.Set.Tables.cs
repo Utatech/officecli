@@ -272,7 +272,36 @@ public partial class ExcelHandler
             {
                 case "name": table.Name = value; break;
                 case "displayname": table.DisplayName = value; break;
-                case "headerrow": table.HeaderRowCount = IsTruthy(value) ? 1u : 0u; break;
+                case "headerrow":
+                {
+                    // A table autoFilter filters BY the header row; Excel
+                    // writes no <autoFilter> when headerRowCount="0" and
+                    // rejects the file outright (0x800A03EC) if a stale one
+                    // is left behind — schema validation stays green, so this
+                    // must be handled here, not caught downstream.
+                    var headerOn = IsTruthy(value);
+                    table.HeaderRowCount = headerOn ? 1u : 0u;
+                    var existingAf = table.GetFirstChild<AutoFilter>();
+                    if (!headerOn)
+                    {
+                        existingAf?.Remove();
+                    }
+                    else if (existingAf == null && table.Reference?.Value is { } tblRef)
+                    {
+                        // Re-enable: restore the filter over the data range
+                        // (header..last data row, excluding a totals row),
+                        // mirroring AddTable.
+                        var afRef = tblRef;
+                        if ((table.TotalsRowCount?.Value ?? 0) > 0 && tblRef.Contains(':'))
+                        {
+                            var afParts = tblRef.Split(':');
+                            var (aCol, aRow) = ParseCellReference(afParts[1]);
+                            afRef = $"{afParts[0]}:{aCol}{aRow - 1}";
+                        }
+                        table.InsertAt(new AutoFilter { Reference = afRef }, 0);
+                    }
+                    break;
+                }
                 case "totalrow":
                 case "showtotals":
                 {

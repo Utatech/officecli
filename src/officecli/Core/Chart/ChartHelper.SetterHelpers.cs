@@ -325,7 +325,12 @@ internal static partial class ChartHelper
             "percent" or "pct" or "percentage" => C.ErrorValues.Percentage,
             "stddev" or "standarddeviation" => C.ErrorValues.StandardDeviation,
             "stderr" or "standarderror" => C.ErrorValues.StandardError,
-            _ => C.ErrorValues.FixedValue
+            // Unknown token must fail loudly: "std" silently coerced to
+            // FixedValue produced zero/wrong error bars with no warning
+            // (silent-accept enum-miss family).
+            _ => throw new ArgumentException(
+                $"Unknown error-bar type '{typeStr}'. Valid: fixed[:N], percent[:N], stddev[:N], stderr, " +
+                $"cust:<direction>:<plusCSV>:<minusCSV>, optionally prefixed with both:/plus:/minus:.")
         };
         errBars.AppendChild(new C.ErrorBarValueType { Val = errValType });
 

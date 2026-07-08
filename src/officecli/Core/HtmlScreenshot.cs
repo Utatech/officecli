@@ -38,6 +38,7 @@ internal static class HtmlScreenshot
             "--disable-gpu",
             "--no-sandbox",
             "--virtual-time-budget=15000",
+            "--timeout=20000",  // wall-clock backstop: a stalled resource is not rescued by virtual time (issue #181)
             "--dump-dom",
             url,
         };
@@ -88,6 +89,7 @@ internal static class HtmlScreenshot
             $"--force-device-scale-factor={scale}",
             $"--window-size={w},{h}",
             "--virtual-time-budget=15000",
+            "--timeout=20000",  // wall-clock backstop: a stalled resource is not rescued by virtual time (issue #181)
             "--default-background-color=00000000",
             $"--screenshot={outPath}",
             url,
@@ -197,6 +199,17 @@ internal static class HtmlScreenshot
             "--no-sandbox",
             "--hide-scrollbars",
             $"--window-size={w},{h}",
+            // Without these caps, new-headless --screenshot waits for the
+            // page's external resources (CDN fonts / KaTeX css+js) to settle;
+            // a slow or stalled request makes it sit until RunBinary's
+            // 2-minute kill — per page, which reads as a hang on headless
+            // Linux (issue #181). The virtual-time budget lets async JS
+            // (KaTeX, mermaid) finish and bounds slow-but-completing loads;
+            // --timeout is the wall-clock backstop for a STALLED request
+            // (connection accepted, never answered), which virtual time
+            // does NOT rescue — verified against a never-responding server.
+            "--virtual-time-budget=15000",
+            "--timeout=20000",
             $"--screenshot={outPath}",
             url,
         };

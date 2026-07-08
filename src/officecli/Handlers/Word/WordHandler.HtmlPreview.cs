@@ -229,8 +229,13 @@ public partial class WordHandler
                     .Where(f => !string.IsNullOrEmpty(f))
                     .Select(f => $"family={f.Replace(' ', '+')}:ital,wght@0,400;0,700;1,400;1,700"));
                 // media=print + onload swap → load asynchronously without blocking first paint
-                // (Google Fonts is unreachable in many networks and would otherwise stall render until TCP timeout).
-                sb.AppendLine($"<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?{families}&display=swap\" media=\"print\" onload=\"this.media='all'\" onerror=\"this.remove()\">");
+                // (web fonts are unreachable in many networks and would otherwise stall render until TCP timeout).
+                // CONSISTENCY(katex-mirror): officecli's caching proxy first (d.officecli.ai/fonts/css2
+                // forwards to Google Fonts, rewrites the font URLs to the /gstatic hop, and CF-edge-caches
+                // both), Google direct as the onerror fallback, removal as the last resort — the local
+                // metric-override @font-face block above keeps layout stable without any web font.
+                var gfQuery = $"{families}&display=swap";
+                sb.AppendLine($"<link rel=\"stylesheet\" href=\"https://d.officecli.ai/fonts/css2?{gfQuery}\" media=\"print\" onload=\"this.media='all'\" onerror=\"if(!this.dataset.f){{this.dataset.f=1;this.href='https://fonts.googleapis.com/css2?{gfQuery}'}}else{{this.remove()}}\">");
             }
         }
         // KaTeX for math rendering — only include when the document actually has formulas.

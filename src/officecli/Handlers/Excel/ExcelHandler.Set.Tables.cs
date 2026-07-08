@@ -49,7 +49,26 @@ public partial class ExcelHandler
                     ValidateDefinedNameRef(value);
                     dn.Text = value;
                     break;
-                case "name": dn.Name = value; break;
+                case "name":
+                    // CONSISTENCY(remove-refs): renaming a defined name breaks
+                    // every formula/DV/CF/chart still referencing the old name
+                    // (Excel surfaces #NAME?). Mirror the table-remove guard —
+                    // scan the workbook and refuse the rename if the old name is
+                    // still referenced, rather than silently orphaning them.
+                    {
+                        var oldName = dn.Name?.Value;
+                        if (!string.IsNullOrEmpty(oldName)
+                            && !string.Equals(oldName, value, StringComparison.Ordinal))
+                        {
+                            var dnRefs = FindDefinedNameReferences(oldName!);
+                            if (dnRefs.Count > 0)
+                                throw new ArgumentException(
+                                    $"Cannot rename named range '{oldName}': it is referenced by {string.Join(", ", dnRefs)}. " +
+                                    $"Repoint those references first.");
+                        }
+                    }
+                    dn.Name = value;
+                    break;
                 case "comment": dn.Comment = value; break;
                 case "volatile":
                     // CONSISTENCY(definedname-volatile): map to the
@@ -80,6 +99,48 @@ public partial class ExcelHandler
 
         workbook.Save();
         return nrUnsupported;
+    }
+
+    /// <summary>
+    /// Scan the whole workbook for references to a defined name: cell formulas,
+    /// data-validation and conditional-formatting formulas, and chart XML.
+    /// Returns a distinct list of human-readable locations (empty when unused).
+    /// </summary>
+    private List<string> FindDefinedNameReferences(string name)
+    {
+        var refs = new List<string>();
+        var wbPart = _doc.WorkbookPart;
+        if (wbPart == null) return refs;
+        var pattern = @"\b" + Regex.Escape(name) + @"\b";
+        foreach (var wsp in wbPart.WorksheetParts)
+        {
+            if (wsp.Worksheet is null) continue;
+            var wsName = wbPart.Workbook?.Sheets?.Elements<Sheet>()
+                .FirstOrDefault(s => s.Id?.Value == wbPart.GetIdOfPart(wsp))?.Name?.Value ?? "?";
+            foreach (var fcell in wsp.Worksheet.Descendants<Cell>())
+            {
+                var f = fcell.CellFormula?.Text;
+                if (!string.IsNullOrEmpty(f) && Regex.IsMatch(f, pattern, RegexOptions.IgnoreCase))
+                    refs.Add($"{wsName}!{fcell.CellReference?.Value ?? "?"}");
+            }
+            foreach (var f1 in wsp.Worksheet.Descendants<Formula1>())
+                if (!string.IsNullOrEmpty(f1.Text) && Regex.IsMatch(f1.Text, pattern, RegexOptions.IgnoreCase))
+                    refs.Add($"{wsName} (data validation)");
+            foreach (var f2 in wsp.Worksheet.Descendants<Formula2>())
+                if (!string.IsNullOrEmpty(f2.Text) && Regex.IsMatch(f2.Text, pattern, RegexOptions.IgnoreCase))
+                    refs.Add($"{wsName} (data validation)");
+            foreach (var cf in wsp.Worksheet.Descendants<Formula>())
+                if (!string.IsNullOrEmpty(cf.Text) && Regex.IsMatch(cf.Text, pattern, RegexOptions.IgnoreCase))
+                    refs.Add($"{wsName} (conditional formatting)");
+            if (wsp.DrawingsPart != null)
+                foreach (var cp in wsp.DrawingsPart.ChartParts)
+                {
+                    var xml = cp.ChartSpace?.InnerXml;
+                    if (xml != null && Regex.IsMatch(xml, pattern, RegexOptions.IgnoreCase))
+                        refs.Add($"{wsName} (chart)");
+                }
+        }
+        return refs.Distinct().ToList();
     }
 
     private List<string> SetValidationByPath(Match m, WorksheetPart worksheet, Dictionary<string, string> properties)

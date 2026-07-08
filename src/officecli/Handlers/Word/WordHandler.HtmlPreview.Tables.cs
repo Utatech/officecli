@@ -566,6 +566,7 @@ public partial class WordHandler
                 // only Paragraph/Table lost every nested run.
                 void RenderCellChild(OpenXmlElement child)
                 {
+                    if (TryEmitContainerBookmarkAnchor(sb, child)) return;
                     if (child is Paragraph cellPara)
                     {
                         // VML horizontal rule inside a cell — same pre-dispatch

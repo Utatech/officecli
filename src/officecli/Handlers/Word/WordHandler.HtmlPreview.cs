@@ -2158,6 +2158,7 @@ public partial class WordHandler
         }
         foreach (var child in hf.ChildElements)
         {
+            if (TryEmitContainerBookmarkAnchor(sb, child)) continue;
             // Watermark paragraphs are nested inside <w:sdt><w:sdtContent>;
             // recurse so they render the same as direct paragraph children.
             if (child is SdtBlock sdt && sdt.SdtContentBlock is { } content)

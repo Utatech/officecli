@@ -362,6 +362,20 @@ public partial class WordHandler
         return false;
     }
 
+    // Container-level <w:bookmarkStart> (a direct child of the cell / header /
+    // txbxContent, the shape Word writes when a bookmark spans multiple
+    // paragraphs) must surface as a navigable <a id> anchor, exactly like the
+    // body loop's emit. Returns true when the child was such a bookmark (the
+    // caller skips it; bookmarkEnd needs no output either way).
+    private static bool TryEmitContainerBookmarkAnchor(StringBuilder sb, OpenXmlElement child)
+    {
+        if (child is not BookmarkStart bm) return false;
+        var name = bm.Name?.Value;
+        if (!string.IsNullOrEmpty(name) && !name.StartsWith("_GoBack"))
+            sb.Append($"<a id=\"{HtmlEncodeAttr(name)}\"></a>");
+        return true;
+    }
+
     private void RenderParagraphContentHtml(StringBuilder sb, Paragraph para)
     {
         OnHtmlParagraphBegin(para);

@@ -627,6 +627,20 @@ public partial class ExcelHandler
             }
             else
             {
+                // Validate a boolean retype BEFORE mutating DataType. When the
+                // cell already holds text and type=boolean arrives with no new
+                // value, the switch below would stamp t="b" onto that text and
+                // only the later check would throw — leaving a corrupt
+                // <c t="b"><v>hello</v></c> Excel refuses (0x800A03EC). The
+                // R114 upfront guard only sees the incoming value=, not the
+                // existing cell text, so guard that here too.
+                if ((cellType.Equals("boolean", StringComparison.OrdinalIgnoreCase)
+                        || cellType.Equals("bool", StringComparison.OrdinalIgnoreCase))
+                    && cell.CellValue?.Text?.Trim().ToLowerInvariant() is { Length: > 0 } existingBool
+                    && existingBool is not ("true" or "false" or "yes" or "no" or "1" or "0"))
+                    throw new ArgumentException(
+                        $"Cannot store '{cell.CellValue?.Text}' as boolean; value must be true/false, yes/no, or 1/0. " +
+                        "Use type=string to keep the literal text.");
                 cell.DataType = cellType.ToLowerInvariant() switch
                 {
                     "string" or "str" => new EnumValue<CellValues>(CellValues.String),

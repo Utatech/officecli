@@ -1291,6 +1291,19 @@ public partial class ExcelHandler
             }
         }
 
+        // Validate columns.N.dxfId BEFORE creating the TableDefinitionPart.
+        // A non-numeric id used to throw further down (after AddNewPart and
+        // before Table.Save), leaving an orphan xl/tables/tableN.xml part with
+        // empty content — malformed XML that makes real Excel refuse the file.
+        for (int n = 1; n <= colCount; n++)
+        {
+            if ((properties.TryGetValue($"columns.{n}.dxfId", out var preDxf)
+                    || properties.TryGetValue($"column.{n}.dxfId", out preDxf))
+                && !uint.TryParse(preDxf, out _))
+                throw new ArgumentException(
+                    $"columns.{n}.dxfId requires a numeric dxf id, got: '{preDxf}'");
+        }
+
         var tableDefPart = tblWorksheet.AddNewPart<TableDefinitionPart>();
         var table = new Table
         {

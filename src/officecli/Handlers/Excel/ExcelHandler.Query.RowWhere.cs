@@ -30,6 +30,20 @@ public partial class ExcelHandler
         "height", "hidden", "outlineLevel", "collapsed", "customHeight",
     };
 
+    // A detected table's column names. Prefer the structured list carried on
+    // InternalFormat (comma-safe); fall back to splitting the display string
+    // only for nodes built before that carrier existed. Splitting Format
+    // ["columns"] directly is WRONG when a header contains a comma
+    // ("Amount, USD") — it invents a phantom column and shifts every header to
+    // its right, silently mis-resolving `row[HeaderName op val]`.
+    private static List<string> DetectedTableColumns(DocumentNode det)
+    {
+        if (det.InternalFormat.TryGetValue("columnList", out var lv) && lv is List<string> list)
+            return list;
+        return (det.Format.TryGetValue("columns", out var cv) ? cv?.ToString() ?? "" : "")
+            .Split(',').Select(s => s.Trim()).ToList();
+    }
+
     // Strip a `col.` / `column.` namespace prefix from a predicate key. The
     // prefix forces COLUMN interpretation at parse time; the resolver works on
     // the bare name. Case-insensitive. Returns the key unchanged when absent.
@@ -93,8 +107,7 @@ public partial class ExcelHandler
             // totals row; data rows are ref minus the header row.
             foreach (var det in DetectTables(sheetName, worksheetPart, realRanges))
             {
-                var colNames = (det.Format.TryGetValue("columns", out var cv) ? cv?.ToString() ?? "" : "")
-                    .Split(',').ToList();
+                var colNames = DetectedTableColumns(det);
                 var refStr = det.Format.TryGetValue("ref", out var rv) ? rv?.ToString() : null;
                 scopeTables.Add((refStr ?? "detected", colNames));
                 if (!TryParseRange(refStr, out var frng)) continue;
@@ -308,8 +321,7 @@ public partial class ExcelHandler
             var sheetName = GetWorksheets().FirstOrDefault(t => t.Part == worksheet).Name ?? "";
             foreach (var det in DetectTables(sheetName, worksheet, realRanges))
             {
-                var colNames = (det.Format.TryGetValue("columns", out var cv) ? cv?.ToString() ?? "" : "")
-                    .Split(',').ToList();
+                var colNames = DetectedTableColumns(det);
                 var refStr = det.Format.TryGetValue("ref", out var rv) ? rv?.ToString() : null;
                 if (!TryParseRange(refStr, out var frng)) continue;
                 if (rowIdx < frng.r1 + 1 || rowIdx > frng.r2) continue;   // header sniff = 1 header row, no totals
@@ -364,8 +376,7 @@ public partial class ExcelHandler
                 var refStr = det.Format.TryGetValue("ref", out var rv) ? rv?.ToString() : null;
                 if (!TryParseRange(refStr, out var frng)) continue;
                 if (rowIdx < frng.r1 + 1 || rowIdx > frng.r2) continue;
-                cols.AddRange((det.Format.TryGetValue("columns", out var cv) ? cv?.ToString() ?? "" : "")
-                    .Split(',').Select(s => s.Trim()));
+                cols.AddRange(DetectedTableColumns(det));
             }
         }
         cols = cols.Where(c => !string.IsNullOrWhiteSpace(c))
@@ -405,8 +416,7 @@ public partial class ExcelHandler
             }
             foreach (var det in DetectTables(sheetName, worksheetPart, realRanges))
             {
-                var colNames = (det.Format.TryGetValue("columns", out var cv) ? cv?.ToString() ?? "" : "")
-                    .Split(',');
+                var colNames = DetectedTableColumns(det);
                 if (colNames.Any(n => n.Trim().Equals(key, StringComparison.OrdinalIgnoreCase)))
                     return true;
             }

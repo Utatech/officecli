@@ -1112,10 +1112,22 @@ internal static class AttributeFilter
         private Condition ParsePredicate()
         {
             SkipWs();
-            int keyStart = _i;
-            if (_i < _s.Length && _s[_i] == '@') _i++;
-            while (_i < _s.Length && (char.IsLetterOrDigit(_s[_i]) || _s[_i] == '.' || _s[_i] == '_')) _i++;
-            var key = _s[keyStart.._i];
+            string key;
+            // Quoted key — lets a predicate address a header name that contains
+            // spaces or punctuation (`["Full Name"~=doe]`, `["Amount, USD">0]`),
+            // which the bare identifier reader below (letters/digits/._ only)
+            // cannot. Content is taken literally between the quotes.
+            if (_i < _s.Length && (_s[_i] == '"' || _s[_i] == '\''))
+            {
+                key = ReadQuotedInner();
+            }
+            else
+            {
+                int keyStart = _i;
+                if (_i < _s.Length && _s[_i] == '@') _i++;
+                while (_i < _s.Length && (char.IsLetterOrDigit(_s[_i]) || _s[_i] == '.' || _s[_i] == '_')) _i++;
+                key = _s[keyStart.._i];
+            }
             if (key.Length == 0 || key == "@")
                 throw Err($"expected a predicate (key op value) at '{_s[_i..]}'");
             SkipWs();
@@ -1181,6 +1193,21 @@ internal static class AttributeFilter
             if (_i >= _s.Length) throw Err($"unterminated quoted value in '{_s[start..]}'");
             _i++;                                // consume closing quote
             return _s[start.._i];
+        }
+
+        // Read a quoted KEY, returning the inner content WITHOUT the quotes
+        // (unlike ReadQuoted, which keeps them for value regex/trim logic). Used
+        // only for a quoted predicate key, where the raw header name is wanted.
+        private string ReadQuotedInner()
+        {
+            char quote = _s[_i];
+            _i++;                                // consume opening quote
+            int start = _i;
+            while (_i < _s.Length && _s[_i] != quote) _i++;
+            if (_i >= _s.Length) throw Err($"unterminated quoted key in '{_s[start..]}'");
+            var inner = _s[start.._i];
+            _i++;                                // consume closing quote
+            return inner;
         }
 
         // True when the whitespace at wsPos is followed by an `and`/`or` keyword

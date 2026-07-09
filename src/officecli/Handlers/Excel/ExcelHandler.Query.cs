@@ -2199,6 +2199,13 @@ public partial class ExcelHandler
             node.Format["stable"] = false;
             node.Format["ref"] = rangeRef;
             node.Format["columns"] = string.Join(",", colNames);
+            // Structured column list — the comma-joined Format["columns"] is
+            // lossy when a header itself contains a comma ("Amount, USD"), which
+            // silently corrupts header→column resolution downstream. Consumers
+            // that resolve a column by name (row-where, set-by-column, hints)
+            // read this list instead of re-splitting the string. See
+            // DetectedTableColumns().
+            node.InternalFormat["columnList"] = colNames;
             node.Format["dataRange"] = $"{IndexToColumnName(ac)}{ar + 1}:{endRef}";
             node.ChildCount = colNames.Count;
             results.Add(node);

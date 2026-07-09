@@ -585,6 +585,12 @@ public partial class ExcelHandler
                     throw new ArgumentException(
                         "validation list options must not contain double quotes; Excel refuses files with quoted-literal escapes inside a list formula. Put the options in cells and reference the range instead.");
             }
+            // Non-list formulas land in the A1-only <x:formula1> element —
+            // an R1C1-style ref makes real Excel refuse the file (0x800A03EC)
+            // while schema validation stays green. (For type=list the text is
+            // a literal option list, not a formula, so it's left alone.)
+            if (dv.Type?.Value != DataValidationValues.List)
+                ValidateNoR1C1Reference(dvFormula1);
             dv.Formula1 = new Formula1(NormalizeValidationFormula(dvFormula1, dv.Type?.Value));
         }
         else if (dv.Type?.Value == DataValidationValues.List)
@@ -599,6 +605,8 @@ public partial class ExcelHandler
             if (dvFormula2.Length > 255)
                 throw new ArgumentException(
                     $"validation formula2 is {dvFormula2.Length} chars; Excel's limit is 255.");
+            if (dv.Type?.Value != DataValidationValues.List)
+                ValidateNoR1C1Reference(dvFormula2);
             dv.Formula2 = new Formula2(NormalizeValidationFormula(dvFormula2, dv.Type?.Value));
         }
         else if (dv.Operator?.Value == DataValidationOperatorValues.Between

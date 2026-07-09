@@ -741,6 +741,10 @@ public partial class ExcelHandler
                         // <x:hyperlinks/> behind — schema-invalid (>=1 child
                         // required), so real Excel refused the file even
                         // though the set itself was correctly rejected.
+                        // Reject XML-illegal control chars up front — otherwise
+                        // the value is accepted into the DOM and only blows up
+                        // at close ("save failed — data may be lost").
+                        Core.ParseHelpers.ValidateXmlText(value, "link");
                         var isInternalTarget = ResolveInternalHyperlinkLocation(value) != null;
                         if (!isInternalTarget)
                             Core.HyperlinkUriValidator.RequireSafeScheme(value, "link");
@@ -758,6 +762,10 @@ public partial class ExcelHandler
                             ?? properties.GetValueOrDefault("screentip");
                         // H2b: optional display= friendly text (OOXML @display).
                         var setHlDisplay = properties.GetValueOrDefault("display");
+                        // These land in @tooltip/@display attributes — reject
+                        // XML-illegal control chars up front, same as link.
+                        Core.ParseHelpers.ValidateXmlText(setHlTip, "tooltip");
+                        Core.ParseHelpers.ValidateXmlText(setHlDisplay, "display");
                         // R37-B: also accept bare `SheetName!Cell` (no '#' prefix)
                         // and quoted `'Multi Word'!Cell` as internal targets.
                         // CONSISTENCY(internal-hyperlink): same detection used in Add.Cells.cs.

@@ -212,9 +212,13 @@ public partial class ExcelHandler
                     // as Add so range refs (C1:C3, Sheet1!A1:A3) are NOT double-quoted.
                     // Previous code only checked !value.StartsWith("\""), which incorrectly
                     // wrapped range refs that pass through unchanged in Add.
+                    if (dv.Type?.Value != DataValidationValues.List)
+                        ValidateNoR1C1Reference(value);
                     dv.Formula1 = new Formula1(NormalizeValidationFormula(value, dv.Type?.Value));
                     break;
                 case "formula2":
+                    if (dv.Type?.Value != DataValidationValues.List)
+                        ValidateNoR1C1Reference(value);
                     dv.Formula2 = new Formula2(NormalizeValidationFormula(value, dv.Type?.Value));
                     break;
                 case "operator":

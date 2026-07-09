@@ -1890,6 +1890,10 @@ public partial class ExcelHandler
                 }
                 case "header":
                 {
+                    // Reject XML-illegal control chars up front — otherwise the
+                    // value is accepted and only fails at save ("data may be
+                    // lost"). Same guard every other text property gets.
+                    Core.ParseHelpers.ValidateXmlText(value, "header");
                     var hf = ws.GetFirstChild<HeaderFooter>();
                     if (hf == null)
                     {
@@ -1901,6 +1905,7 @@ public partial class ExcelHandler
                 }
                 case "footer":
                 {
+                    Core.ParseHelpers.ValidateXmlText(value, "footer");
                     var hf = ws.GetFirstChild<HeaderFooter>();
                     if (hf == null)
                     {

@@ -294,6 +294,14 @@ public partial class ExcelHandler
             GetSheet(worksheet).Append(sheetData);
         }
 
+        // Did the cell exist before this Set? If not, FindOrCreateCell
+        // materializes it, and a mid-Set validation throw must remove it
+        // entirely — restoring an empty clone (below) would leave a ghost
+        // <c> stub behind on a failed create (exit 1 must mean no change).
+        var cellPreExisted = sheetData.Elements<Row>()
+            .SelectMany(r => r.Elements<Cell>())
+            .Any(c => string.Equals(c.CellReference?.Value, cellRef, StringComparison.OrdinalIgnoreCase));
+
         var cell = FindOrCreateCell(sheetData, cellRef);
 
         // Clone cell for rollback on failure (atomic: no partial modifications)
@@ -305,8 +313,13 @@ public partial class ExcelHandler
         }
         catch
         {
-            // Rollback: restore cell to pre-modification state
-            cell.Parent?.ReplaceChild(cellBackup, cell);
+            if (cellPreExisted)
+                // Rollback: restore cell to pre-modification state.
+                cell.Parent?.ReplaceChild(cellBackup, cell);
+            else
+                // Newly created by this Set — remove it so a failed create
+                // leaves no ghost cell.
+                cell.Remove();
             throw;
         }
     }

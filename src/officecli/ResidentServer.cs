@@ -462,7 +462,22 @@ public class ResidentServer : IDisposable
             if (!_dirty || !_editable) return;
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            _handler.Save();
+            // Idle flush runs while nobody waits, so the xlsx formula-cache sweep
+            // may take a generous budget — provided it yields the moment a client
+            // connects and starts waiting on _commandLock (an aborted sweep falls
+            // back to fullCalcOnLoad exactly like budget exhaustion, so this only
+            // trades sweep completeness for command latency, never correctness).
+            var xlsx = _handler as ExcelHandler;
+            if (xlsx != null)
+            {
+                xlsx.SweepBudgetOverride = TimeSpan.FromSeconds(60);
+                xlsx.SweepYieldRequested = () => Volatile.Read(ref _pendingClients) > 0;
+            }
+            try { _handler.Save(); }
+            finally
+            {
+                if (xlsx != null) { xlsx.SweepBudgetOverride = null; xlsx.SweepYieldRequested = null; }
+            }
             sw.Stop();
             _dirty = false;
             RecordSaveDuration(sw.Elapsed);
@@ -632,8 +647,14 @@ public class ResidentServer : IDisposable
         }
     }
 
+    // Number of accepted business clients not yet finished. Autosave's formula
+    // sweep polls this (via the handler's SweepYieldRequested hook) so a command
+    // arriving mid-sweep interrupts it instead of waiting out the sweep budget.
+    private int _pendingClients;
+
     private async Task HandleClientWithLockAsync(NamedPipeServerStream server, CancellationToken token)
     {
+        Interlocked.Increment(ref _pendingClients);
         try
         {
             await _commandLock.WaitAsync(token);
@@ -655,6 +676,7 @@ public class ResidentServer : IDisposable
         }
         finally
         {
+            Interlocked.Decrement(ref _pendingClients);
             await server.DisposeAsync();
         }
     }

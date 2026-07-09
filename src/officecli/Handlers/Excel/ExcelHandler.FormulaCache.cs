@@ -97,6 +97,19 @@ public partial class ExcelHandler
             System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var s) && s > 0
             ? s : 5);
 
+    /// <summary>
+    /// Host hooks for background flushes (the resident's idle autosave). A host
+    /// that saves while nobody is waiting may allow the sweep a LARGER budget via
+    /// <see cref="SweepBudgetOverride"/> — but must then supply
+    /// <see cref="SweepYieldRequested"/> so the sweep aborts (same safe path as
+    /// budget exhaustion: fullCalcOnLoad + bounded persist) the moment a command
+    /// arrives and starts waiting on the host's serialization lock. Foreground
+    /// save/close leave both null and get the default budget. Polled per cell —
+    /// keep the delegate to a volatile read.
+    /// </summary>
+    public Func<bool>? SweepYieldRequested { get; set; }
+    public TimeSpan? SweepBudgetOverride { get; set; }
+
     private void RefreshStaleFormulaCaches()
     {
         if (_doc.WorkbookPart == null) return;
@@ -111,6 +124,8 @@ public partial class ExcelHandler
         // one per reference (the recursive-re-eval blowup behind issue #187).
         var session = new Core.FormulaEvalSession();
         var sweepClock = System.Diagnostics.Stopwatch.StartNew();
+        var budget = SweepBudgetOverride ?? FormulaSweepBudget;
+        var yieldRequested = SweepYieldRequested;
         var budgetExhausted = false;
         foreach (var (sheetName, wsPart) in GetWorksheets())
         {
@@ -124,7 +139,7 @@ public partial class ExcelHandler
                 if (budgetExhausted) break;
                 foreach (var cell in row.Elements<Cell>())
                 {
-                    if (sweepClock.Elapsed > FormulaSweepBudget)
+                    if (sweepClock.Elapsed > budget || yieldRequested?.Invoke() == true)
                     {
                         budgetExhausted = true;
                         break;

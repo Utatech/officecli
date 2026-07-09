@@ -1695,7 +1695,7 @@ public class ResidentServer : IDisposable
             else if (modeKey is "outline" or "o")
                 Console.WriteLine(_handler.ViewAsOutlineJson().ToJsonString(OutputFormatter.PublicJsonOptions));
             else if (modeKey is "text" or "t")
-                Console.WriteLine(_handler.ViewAsTextJson(start, end, maxLines, cols).ToJsonString(OutputFormatter.PublicJsonOptions));
+                Console.WriteLine(_handler.ViewAsTextJson(start, end, maxLines, cols, req.GetArgOrNull("range")).ToJsonString(OutputFormatter.PublicJsonOptions));
             else if (modeKey is "annotated" or "a")
                 Console.WriteLine(OutputFormatter.FormatView(mode, _handler.ViewAsAnnotated(start, end, maxLines, cols), format));
             else if (modeKey is "issues" or "i")
@@ -1734,7 +1734,7 @@ public class ResidentServer : IDisposable
             switch (modeKey)
             {
                 case "text" or "t":
-                    output = _handler.ViewAsText(start, end, maxLines, cols); break;
+                    output = _handler.ViewAsText(start, end, maxLines, cols, req.GetArgOrNull("range")); break;
                 case "annotated" or "a":
                     output = _handler.ViewAsAnnotated(start, end, maxLines, cols); break;
                 case "outline" or "o":

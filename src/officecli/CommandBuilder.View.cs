@@ -23,7 +23,7 @@ static partial class CommandBuilder
         var pageOpt = new Option<string?>("--page") { Description = "Page filter (e.g. 1, 2-5, 1,3,5). html mode: default=all. screenshot mode: default=1 (use --page 1-N to capture more, or --grid N for a whole-doc thumbnail contact sheet)." };
         var browserOpt = new Option<bool>("--browser") { Description = "Open output in browser (html / svg modes)" };
         var outOpt = new Option<string?>("--out", "-o") { Description = "Output file path (html, screenshot, pdf modes; defaults to stdout for html, a temp file for screenshot)" };
-        var clipOpt = new Option<string?>("--range") { Description = "Screenshot only a region (screenshot mode): an xlsx cell range ('Sheet1!A1:C3' or '/Sheet1/A1:C3'), or any element data-path ('/slide[1]/shape[@id=N]', '/body/table[1]'). The PNG is cropped to the target's bounding box. Not the character-offset `range=` prop of `set` (that one formats a text span like 3:7)." };
+        var clipOpt = new Option<string?>("--range") { Description = "Restrict output to a region. Screenshot mode: an xlsx cell range ('Sheet1!A1:C3' or '/Sheet1/A1:C3') or any element data-path ('/slide[1]/shape[@id=N]', '/body/table[1]'); the PNG is cropped to the target's bounding box. Text mode (xlsx only): a cell range or single cell — emits just those rows/cells, saving context on large sheets. Not the character-offset `range=` prop of `set` (that one formats a text span like 3:7)." };
         var screenshotWidthOpt = new Option<int>("--screenshot-width") { Description = "Screenshot viewport width (default 1600)", DefaultValueFactory = _ => 1600 };
         var screenshotHeightOpt = new Option<int>("--screenshot-height") { Description = "Screenshot viewport height (default 1200)", DefaultValueFactory = _ => 1200 };
         var gridOpt = new Option<string?>("--grid")
@@ -628,7 +628,7 @@ static partial class CommandBuilder
                 else if (modeKey is "outline" or "o")
                     Console.WriteLine(OutputFormatter.WrapEnvelope(handler.ViewAsOutlineJson().ToJsonString(OutputFormatter.PublicJsonOptions)));
                 else if (modeKey is "text" or "t")
-                    Console.WriteLine(OutputFormatter.WrapEnvelope(handler.ViewAsTextJson(start, end, maxLines, cols).ToJsonString(OutputFormatter.PublicJsonOptions)));
+                    Console.WriteLine(OutputFormatter.WrapEnvelope(handler.ViewAsTextJson(start, end, maxLines, cols, clipArg).ToJsonString(OutputFormatter.PublicJsonOptions)));
                 else if (modeKey is "annotated" or "a")
                     Console.WriteLine(OutputFormatter.WrapEnvelope(
                         OutputFormatter.FormatView(mode, handler.ViewAsAnnotated(start, end, maxLines, cols), OutputFormat.Json)));
@@ -665,7 +665,7 @@ static partial class CommandBuilder
             {
                 var output = mode.ToLowerInvariant() switch
                 {
-                    "text" or "t" => handler.ViewAsText(start, end, maxLines, cols),
+                    "text" or "t" => handler.ViewAsText(start, end, maxLines, cols, clipArg),
                     "annotated" or "a" => handler.ViewAsAnnotated(start, end, maxLines, cols),
                     "outline" or "o" => handler.ViewAsOutline(),
                     "stats" or "s" => withPagesValue.HasValue

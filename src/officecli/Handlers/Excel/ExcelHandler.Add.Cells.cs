@@ -460,7 +460,23 @@ public partial class ExcelHandler
                     "value must be true/false, yes/no, or 1/0. Use type=string to keep the literal text.");
         }
 
+        // Atomicity: FindOrCreateCell materializes a <c> stub if the cell did
+        // not exist. A validation throw further down (bad textRotation, bad
+        // color, bad merge ref, ...) must not leave that stub — or the value
+        // already written into it — persisted while the command reports
+        // Error/exit 1. Capture pre-existence, then roll the new cell back on
+        // any throw. Mirrors the Set-side rollback (ExcelHandler.Set.cs).
+        var cellPreExisted = cellSheetData.Elements<Row>()
+            .SelectMany(r => r.Elements<Cell>())
+            .Any(c => string.Equals(c.CellReference?.Value, cellRef, StringComparison.OrdinalIgnoreCase));
+
         var cell = FindOrCreateCell(cellSheetData, cellRef);
+        // Clone for rollback of a pre-existing cell (restore original state);
+        // a newly created cell is removed instead (see catch below).
+        var cellBackup = cell.CloneNode(true);
+
+        try
+        {
 
         // CONSISTENCY(cell-value-alias): Set accepts "text" as alias for
         // "value" (see WordHandler.Set cell text handling); mirror that here.
@@ -935,6 +951,32 @@ public partial class ExcelHandler
         DeleteCalcChainIfPresent();
         SaveWorksheet(cellWorksheet);
         return $"/{cellSheetName}/{cellRef}";
+        }
+        catch
+        {
+            if (cellPreExisted)
+            {
+                // Restore the pre-existing cell to its original state so a
+                // failed Add makes no partial change (mirrors Set-side rollback).
+                cell.Parent?.ReplaceChild(cellBackup, cell);
+            }
+            else
+            {
+                // Newly created by this Add — remove the stub (and its now-empty
+                // row) so a failed create leaves no ghost cell/value behind.
+                var newRow = cell.Parent as Row;
+                cell.Remove();
+                if (newRow != null && !newRow.Elements<Cell>().Any())
+                {
+                    var sd = newRow.Parent as SheetData;
+                    var rIdx = newRow.RowIndex?.Value;
+                    newRow.Remove();
+                    if (sd != null && rIdx.HasValue)
+                        _rowIndex?.GetValueOrDefault(sd)?.Remove(rIdx.Value);
+                }
+            }
+            throw;
+        }
     }
 
     private string AddCol(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)

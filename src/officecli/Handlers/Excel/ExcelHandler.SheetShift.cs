@@ -34,6 +34,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
+using CX = DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
 using X14 = DocumentFormat.OpenXml.Office2010.Excel;
 using Xm = DocumentFormat.OpenXml.Office.Excel;
 using ThreadedCmt = DocumentFormat.OpenXml.Office2019.Excel.ThreadedComments;
@@ -275,6 +276,23 @@ public partial class ExcelHandler
                     }
                     if (chDirty) cs.Save();
                 }
+                // Extended (cx) charts — funnel/pareto/treemap/sunburst/
+                // boxWhisker/histogram — carry their series/category refs in
+                // <cx:f> and were never displaced, so a row/col insert left
+                // them stale (same class as the regular-chart gap above).
+                foreach (var extPart in wsPart.DrawingsPart.ExtendedChartParts)
+                {
+                    var cxs = extPart.ChartSpace;
+                    if (cxs == null) continue;
+                    bool cxDirty = false;
+                    foreach (var f in cxs.Descendants<CX.Formula>())
+                    {
+                        if (string.IsNullOrEmpty(f.Text)) continue;
+                        var nf = formulaTextMapper(f.Text);
+                        if (!string.Equals(nf, f.Text, StringComparison.Ordinal)) { f.Text = nf; cxDirty = true; }
+                    }
+                    if (cxDirty) cxs.Save();
+                }
             }
         }
 
@@ -348,6 +366,17 @@ public partial class ExcelHandler
         {
             foreach (var sv in sheetViews.Elements<SheetView>())
             {
+                // The frozen/split pane's top-left cell is an A1 anchor with the
+                // same displacement semantics as the selection's active cell; it
+                // was left un-shifted, so a row/col insert drifted the freeze
+                // point (freeze=B3 stayed B3 after inserting a row above).
+                var pane = sv.GetFirstChild<Pane>();
+                if (pane?.TopLeftCell?.Value is { } tlc)
+                {
+                    var newTlc = refMapper(tlc);
+                    if (newTlc != null && !string.Equals(newTlc, tlc, StringComparison.Ordinal))
+                        pane.TopLeftCell = newTlc;
+                }
                 foreach (var sel in sv.Elements<Selection>())
                 {
                     if (sel.ActiveCell?.Value != null)

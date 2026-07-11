@@ -491,7 +491,7 @@ public static partial class ExcelBatchEmitter
         }
 
         // 7. Sheet-level settings (freeze/zoom/tab color/autofilter/print...).
-        EmitSheetSettings(sheetNode, sheetPath, items, warnings);
+        EmitSheetSettings(xl, sheetNode, sheetPath, items, warnings);
 
         // 8. Structured elements: tables, conditional formats, validations,
         // comments, charts, sparklines. After data + styles so referenced
@@ -503,7 +503,7 @@ public static partial class ExcelBatchEmitter
             warnings.Add(new UnsupportedWarning(element, sheetPath, reason));
     }
 
-    private static void EmitSheetSettings(DocumentNode sheetNode, string sheetPath,
+    private static void EmitSheetSettings(ExcelHandler xl, DocumentNode sheetNode, string sheetPath,
         List<BatchItem> items, List<UnsupportedWarning> warnings)
     {
         var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -559,24 +559,34 @@ public static partial class ExcelBatchEmitter
 
         // Manual page breaks. Get exposes them as comma-joined index lists;
         // replay re-adds each one (rowbreak row=N / colbreak col=N).
-        if (sheetNode.Format.TryGetValue("rowBreaks", out var rbk) && rbk is string rbkS && rbkS.Length > 0)
-            foreach (var b in rbkS.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                items.Add(new BatchItem
-                {
-                    Command = "add",
-                    Parent = sheetPath,
-                    Type = "rowbreak",
-                    Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["row"] = b },
-                });
-        if (sheetNode.Format.TryGetValue("colBreaks", out var cbk) && cbk is string cbkS && cbkS.Length > 0)
-            foreach (var b in cbkS.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                items.Add(new BatchItem
-                {
-                    Command = "add",
-                    Parent = sheetPath,
-                    Type = "colbreak",
-                    Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["col"] = b },
-                });
+        // Manual page breaks carry an optional restricted column/row span
+        // (<brk min max>). The sheet-level list gives only the break index, so
+        // fetch each break's node to recover min/max and replay a non-full
+        // span (otherwise the break silently widened to sheet-default on
+        // round-trip). Emitted inline on the add (AddRowBreak/AddColBreak now
+        // accept min/max).
+        EmitPageBreaks(xl, sheetNode, sheetPath, "rowBreaks", "rowbreak", "row", items);
+        EmitPageBreaks(xl, sheetNode, sheetPath, "colBreaks", "colbreak", "col", items);
+    }
+
+    private static void EmitPageBreaks(ExcelHandler xl, DocumentNode sheetNode, string sheetPath,
+        string getKey, string addType, string idKey, List<BatchItem> items)
+    {
+        if (!sheetNode.Format.TryGetValue(getKey, out var bkObj) || bkObj is not string bkS || bkS.Length == 0)
+            return;
+        var ids = bkS.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (int i = 0; i < ids.Length; i++)
+        {
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [idKey] = ids[i] };
+            try
+            {
+                var brkNode = xl.Get($"{sheetPath}/{addType}[{i + 1}]");
+                if (brkNode.Format.TryGetValue("min", out var mn)) props["min"] = FormatValue(mn);
+                if (brkNode.Format.TryGetValue("max", out var mx)) props["max"] = FormatValue(mx);
+            }
+            catch { /* fall back to the bare index add */ }
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = addType, Props = props });
+        }
     }
 
     // ==================== Value baseline (CSV import) ====================

@@ -472,6 +472,11 @@ public static partial class ExcelBatchEmitter
         foreach (var colNode in colNodes)
         {
             var cp = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // Raw whole-column style index (<col style="N">) when it carries
+            // non-numberformat facets — GetDumpColumnNodes surfaces it as
+            // `style`; SetColumn's default branch writes col@style. Otherwise
+            // the numberformat code below carries a numberformat-only column.
+            if (colNode.Format.TryGetValue("style", out var cstyle)) cp["style"] = FormatValue(cstyle);
             if (colNode.Format.TryGetValue("width", out var w)) cp["width"] = FormatValue(w);
             if (colNode.Format.TryGetValue("hidden", out var chd) && chd is bool chb && chb) cp["hidden"] = "true";
             if (colNode.Format.TryGetValue("outlineLevel", out var colv)) cp["outline"] = FormatValue(colv);

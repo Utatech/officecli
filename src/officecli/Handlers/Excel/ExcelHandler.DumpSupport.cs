@@ -293,15 +293,38 @@ public partial class ExcelHandler
                 // Get reader in ExcelHandler.Query.cs).
                 if (col.Style?.Value is uint colStyleIdx && colStyleIdx != 0)
                 {
-                    var (colNumFmtId, colFmtCode) = ExcelDataFormatter.GetCellFormat(
-                        new Cell { StyleIndex = colStyleIdx }, _doc.WorkbookPart);
-                    if (colNumFmtId > 0)
+                    // A whole-column style ref (<col style="N">) can carry
+                    // font/fill/border/alignment facets, not just a number
+                    // format. The numberformat-only readback below cannot
+                    // capture those, so when the referenced cellXf applies any
+                    // non-numberformat facet, emit the raw style index (mirrors
+                    // the row @s fix). Replay realigns the index because styled
+                    // cells are emitted before column settings, so the same
+                    // cellXf is recreated at the same slot. numberformat-only
+                    // columns keep the portable code emission.
+                    var colXf = _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet?
+                        .CellFormats?.ElementAtOrDefault((int)colStyleIdx) as CellFormat;
+                    bool colHasFacets = colXf != null && (
+                        colXf.ApplyFont?.Value == true || colXf.ApplyFill?.Value == true
+                        || colXf.ApplyBorder?.Value == true || colXf.ApplyAlignment?.Value == true
+                        || (colXf.FontId?.Value ?? 0) != 0 || (colXf.FillId?.Value ?? 0) > 1
+                        || (colXf.BorderId?.Value ?? 0) != 0);
+                    if (colHasFacets)
                     {
-                        var colCode = !string.IsNullOrEmpty(colFmtCode)
-                            ? colFmtCode
-                            : ExcelDataFormatter.ResolveBuiltInFormatCode(colNumFmtId);
-                        if (!string.IsNullOrEmpty(colCode))
-                            node.Format["numberformat"] = colCode;
+                        node.Format["style"] = colStyleIdx.ToString();
+                    }
+                    else
+                    {
+                        var (colNumFmtId, colFmtCode) = ExcelDataFormatter.GetCellFormat(
+                            new Cell { StyleIndex = colStyleIdx }, _doc.WorkbookPart);
+                        if (colNumFmtId > 0)
+                        {
+                            var colCode = !string.IsNullOrEmpty(colFmtCode)
+                                ? colFmtCode
+                                : ExcelDataFormatter.ResolveBuiltInFormatCode(colNumFmtId);
+                            if (!string.IsNullOrEmpty(colCode))
+                                node.Format["numberformat"] = colCode;
+                        }
                     }
                 }
                 if (node.Format.Count > 0) nodes.Add(node);

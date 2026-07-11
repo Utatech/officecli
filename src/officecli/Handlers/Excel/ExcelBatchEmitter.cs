@@ -87,6 +87,13 @@ public static partial class ExcelBatchEmitter
         ("margin.right", "margin.right"),
         ("margin.header", "margin.header"),
         ("margin.footer", "margin.footer"),
+        // sortState. Emitted LAST so it replays against a fully-populated
+        // sheet (the sheet-level "sort" Set case sorts the used range). Get
+        // surfaces only the sort keys ("A:desc"), not the sortState @ref
+        // extent, so dump reconstructs keys-only — a partial-range sort
+        // replays as a used-range sort. Faithful to the Get-surfaced canonical
+        // state; strictly better than dropping sortState entirely.
+        ("sort", "sort"),
     };
 
     // Workbook-level keys where Get key == Set case (Set.Workbook.cs).

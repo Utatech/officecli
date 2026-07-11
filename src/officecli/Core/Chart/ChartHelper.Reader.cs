@@ -1329,6 +1329,16 @@ internal static partial class ChartHelper
                     if (dispRSqr?.HasValue == true && dispRSqr.Value) seriesNode.Format["trendline.dispRSqr"] = "true";
                     var dispEq = firstTl.GetFirstChild<C.DisplayEquation>()?.Val;
                     if (dispEq?.HasValue == true && dispEq.Value) seriesNode.Format["trendline.dispEq"] = "true";
+                    // Forecast forward/backward + manual intercept. Previously
+                    // unread, so dump→replay silently dropped them even though
+                    // the Setter accepts trendline.forecastforward/backward/
+                    // intercept. Emitted below via the chart-level fan-out keys.
+                    var fwd = firstTl.GetFirstChild<C.Forward>()?.Val;
+                    if (fwd?.HasValue == true) seriesNode.Format["trendline.forward"] = fwd.Value;
+                    var bwd = firstTl.GetFirstChild<C.Backward>()?.Val;
+                    if (bwd?.HasValue == true) seriesNode.Format["trendline.backward"] = bwd.Value;
+                    var icpt = firstTl.GetFirstChild<C.Intercept>()?.Val;
+                    if (icpt?.HasValue == true) seriesNode.Format["trendline.intercept"] = icpt.Value;
                     // CONSISTENCY(trendline-name-readback): the Setter writes
                     // a <c:trendlineLbl> with rich-text holding the user's
                     // name. Pull the text content back for Get parity.

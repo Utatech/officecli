@@ -850,8 +850,10 @@ internal static partial class ChartHelper
                     valEl.RemoveAllChildren();
                     if (value.Contains('!'))
                     {
-                        // Cell reference: e.g. Sheet1!B2:B4
-                        var builtVals = BuildValuesRef(value);
+                        // Cell reference: e.g. Sheet1!B2:B4 — normalize so a
+                        // sheet name that needs quoting (spaces, hyphens, leading
+                        // digit) is quoted, matching the Add path.
+                        var builtVals = BuildValuesRef(NormalizeRangeReference(value));
                         foreach (var child in builtVals.ChildElements.ToList())
                             valEl.AppendChild(child.CloneNode(true));
                     }

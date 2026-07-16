@@ -1144,6 +1144,25 @@ internal class ExcelStyleManager
 
     // ==================== Fill ====================
 
+    // CONSISTENCY(scheme-color): fill / fillBg accept scheme names
+    // ("accent1"-"accent6", "lt1"/"dk1", …) the same way font.color does.
+    // Get surfaces theme pattern fills AS scheme names, so Set must take
+    // them back — otherwise a dump→batch round-trip of a theme-filled cell
+    // rejects its own output (and, under atomic batch, rolls back the whole
+    // replay over one fill).
+    private static (string? Rgb, uint? Theme) ResolveFillColor(string value)
+    {
+        var schemeIdx = OfficeCli.Handlers.ExcelHandler.ExcelSchemeColorNameToThemeIndex(value);
+        return schemeIdx.HasValue ? (null, schemeIdx.Value) : (NormalizeColor(value), null);
+    }
+
+    private static bool ColorMatches(ColorType? c, string? rgb, uint? theme)
+        => rgb != null
+            ? string.Equals(c?.Rgb?.Value, rgb, StringComparison.OrdinalIgnoreCase)
+            : theme != null
+                ? c?.Theme?.Value == theme.Value
+                : c == null || (c.Rgb == null && c.Theme == null);
+
     private static uint GetOrCreateFill(Stylesheet stylesheet, string hexColor)
     {
         var fills = stylesheet.Fills;
@@ -1161,7 +1180,7 @@ internal class ExcelStyleManager
                 stylesheet.Append(fills);
         }
 
-        var normalizedColor = NormalizeColor(hexColor);
+        var (rgb, theme) = ResolveFillColor(hexColor);
 
         // Search for existing match
         int idx = 0;
@@ -1169,15 +1188,15 @@ internal class ExcelStyleManager
         {
             var pf = fill.PatternFill;
             if (pf?.PatternType?.Value == PatternValues.Solid &&
-                string.Equals(pf.ForegroundColor?.Rgb?.Value, normalizedColor, StringComparison.OrdinalIgnoreCase))
+                ColorMatches(pf.ForegroundColor, rgb, theme))
                 return (uint)idx;
             idx++;
         }
 
         // Create new fill
-        fills.Append(new Fill(new PatternFill(
-            new ForegroundColor { Rgb = normalizedColor }
-        ) { PatternType = PatternValues.Solid }));
+        var fg = new ForegroundColor();
+        if (rgb != null) fg.Rgb = rgb; else fg.Theme = theme;
+        fills.Append(new Fill(new PatternFill(fg) { PatternType = PatternValues.Solid }));
         fills.Count = (uint)fills.Elements<Fill>().Count();
 
         return (uint)(fills.Elements<Fill>().Count() - 1);
@@ -1232,24 +1251,35 @@ internal class ExcelStyleManager
         }
 
         var pat = ParsePatternType(patternName) ?? PatternValues.Solid;
-        var normFg = fgHex != null ? NormalizeColor(fgHex) : null;
-        var normBg = bgHex != null ? NormalizeColor(bgHex) : null;
+        // CONSISTENCY(scheme-color): pattern fg/bg accept scheme names too.
+        var (fgRgb, fgTheme) = fgHex != null ? ResolveFillColor(fgHex) : (null, (uint?)null);
+        var (bgRgb, bgTheme) = bgHex != null ? ResolveFillColor(bgHex) : (null, (uint?)null);
 
         int idx = 0;
         foreach (var fill in fills.Elements<Fill>())
         {
             var pf = fill.PatternFill;
             if (pf?.PatternType?.Value == pat
-                && string.Equals(pf.ForegroundColor?.Rgb?.Value, normFg, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(pf.BackgroundColor?.Rgb?.Value, normBg, StringComparison.OrdinalIgnoreCase))
+                && (fgHex == null ? pf?.ForegroundColor == null : ColorMatches(pf?.ForegroundColor, fgRgb, fgTheme))
+                && (bgHex == null ? pf?.BackgroundColor == null : ColorMatches(pf?.BackgroundColor, bgRgb, bgTheme)))
                 return (uint)idx;
             idx++;
         }
 
         var newPf = new PatternFill { PatternType = pat };
         // OOXML element order: fgColor before bgColor.
-        if (normFg != null) newPf.Append(new ForegroundColor { Rgb = normFg });
-        if (normBg != null) newPf.Append(new BackgroundColor { Rgb = normBg });
+        if (fgHex != null)
+        {
+            var fg = new ForegroundColor();
+            if (fgRgb != null) fg.Rgb = fgRgb; else fg.Theme = fgTheme;
+            newPf.Append(fg);
+        }
+        if (bgHex != null)
+        {
+            var bg = new BackgroundColor();
+            if (bgRgb != null) bg.Rgb = bgRgb; else bg.Theme = bgTheme;
+            newPf.Append(bg);
+        }
         fills.Append(new Fill(newPf));
         fills.Count = (uint)fills.Elements<Fill>().Count();
         return (uint)(fills.Elements<Fill>().Count() - 1);

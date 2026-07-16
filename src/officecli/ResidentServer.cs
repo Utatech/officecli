@@ -1241,6 +1241,13 @@ public class ResidentServer : IDisposable
         var deferHandler = _handler as OfficeCli.Handlers.WordHandler;
         var prevDefer = deferHandler?.DeferSave ?? false;
         if (deferHandler != null) deferHandler.DeferSave = true;
+        // Staged docProps whole-part payloads live outside the flush barrier
+        // (they land on disk only at a non-discard Dispose), so a rollback
+        // must restore this pre-batch snapshot into the replacement handler —
+        // otherwise confirmed pre-batch raw-set edits vanish with the
+        // poisoned DOM. Taken before the batch so batch-staged entries roll
+        // back too.
+        var preBatchWholeParts = atomic ? deferHandler?.SnapshotPendingWholeParts() : null;
         List<BatchResult> results;
         // BUG-BT2: collect per-item unrecognized-LaTeX tokens across the whole
         // batch so the resident surfaces the same unrecognized_latex_command
@@ -1279,7 +1286,11 @@ public class ResidentServer : IDisposable
             // Re-establish the resident's long-lived handler invariants
             // (mirrors PromoteToEditable's post-open state): _editable stays
             // latched, deferral re-applies, and memory now equals disk.
-            if (_handler is OfficeCli.Handlers.WordHandler wh2) wh2.DeferSave = true;
+            if (_handler is OfficeCli.Handlers.WordHandler wh2)
+            {
+                wh2.DeferSave = true;
+                wh2.AdoptPendingWholeParts(preBatchWholeParts);
+            }
             _dirty = false;
             rolledBack = true;
         }

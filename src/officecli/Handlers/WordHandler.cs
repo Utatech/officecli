@@ -2181,6 +2181,27 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
     // (ordinary edits do flush mid-session; only these staged whole-parts wait for
     // close). dump→batch rebuilds run non-resident (OFFICECLI_NO_AUTO_RESIDENT=1),
     // so this gap does not affect the round-trip path.
+    /// <summary>
+    /// Atomic-batch rollback support. Staged whole-part payloads
+    /// (docProps raw-set replacements) are session state that only lands on
+    /// disk at a NON-discard Dispose — handler.Save() cannot flush them, so
+    /// the resident's pre-batch flush barrier does not cover them. A rollback
+    /// therefore snapshots the staging map BEFORE the batch (batch-staged
+    /// entries must roll back too) and adopts the snapshot into the
+    /// replacement handler, instead of dropping confirmed pre-batch edits
+    /// with the poisoned DOM.
+    /// </summary>
+    internal Dictionary<string, string>? SnapshotPendingWholeParts()
+        => _pendingWholeParts == null ? null
+            : new Dictionary<string, string>(_pendingWholeParts, StringComparer.OrdinalIgnoreCase);
+
+    internal void AdoptPendingWholeParts(Dictionary<string, string>? staged)
+    {
+        if (staged == null || staged.Count == 0) return;
+        _pendingWholeParts = new Dictionary<string, string>(staged, StringComparer.OrdinalIgnoreCase);
+        Modified = true;
+    }
+
     private void FlushPendingWholeParts()
     {
         if (_pendingWholeParts == null || _pendingWholeParts.Count == 0) return;

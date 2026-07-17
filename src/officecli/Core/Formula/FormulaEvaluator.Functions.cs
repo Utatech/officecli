@@ -211,7 +211,7 @@ internal partial class FormulaEvaluator
             "ISOMITTED" => FR_B(args.Count > 0 && IsOmittedArg(args[0])),
 
             // ===== Text =====
-            "CONCATENATE" or "CONCAT" => FR_S(string.Concat(AllArgs(args).Select(r => r.AsString()))),
+            "CONCATENATE" or "CONCAT" => EvalConcat(args),
             "TEXTJOIN" => EvalTextJoin(args),
             "VALUETOTEXT" => EvalValueToText(args),
             "ARRAYTOTEXT" => EvalArrayToText(args),
@@ -830,13 +830,26 @@ internal partial class FormulaEvaluator
                     for (int col = 0; col < rd2.Cols; col++)
                     {
                         var cv = rd2.Cells[row, col];
-                        if (cv != null) { var s = cv.AsString(); if (!ignoreEmpty || s != "") parts.Add(s); }
+                        if (cv == null) continue;
+                        if (cv.IsError) return cv;   // any error in the text propagates (matches Excel)
+                        var s = cv.AsString(); if (!ignoreEmpty || s != "") parts.Add(s);
                     }
             }
             else if (args[i] is double[] arr) foreach (var v in arr) parts.Add(v.ToString(CultureInfo.InvariantCulture));
-            else if (args[i] is FormulaResult fr) { var s = fr.AsString(); if (!ignoreEmpty || s != "") parts.Add(s); }
+            else if (args[i] is FormulaResult fr) { if (fr.IsError) return fr; var s = fr.AsString(); if (!ignoreEmpty || s != "") parts.Add(s); }
         }
         return FR_S(string.Join(delim, parts));
+    }
+
+    // CONCAT / CONCATENATE — join every argument's text, but any error among the
+    // arguments propagates as that error (matches Excel; text functions are not
+    // error-swallowing).
+    private FormulaResult? EvalConcat(List<object> args)
+    {
+        var all = AllArgs(args);
+        var err = all.FirstOrDefault(r => r.IsError);
+        if (err != null) return err;
+        return FR_S(string.Concat(all.Select(r => r.AsString())));
     }
 
     // VALUETOTEXT(value, [format]) — format 0 (concise, default) returns the

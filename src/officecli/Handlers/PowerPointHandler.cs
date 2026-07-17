@@ -1732,9 +1732,16 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                 if (parentPartPath == "/presentation")
                 {
                     epHost = presentationPart;
+                    // A non-part (external/hyperlink) relationship can't be
+                    // re-homed by ChangeIdOfPart, and silently skipping here
+                    // would report success while dropping the binary part.
+                    // Fail loudly instead — under atomic batch the file is
+                    // rolled back untouched. Unreachable from a self-produced
+                    // dump (both carriers pin ids from the same source rels).
                     if (epHost.ExternalRelationships.Any(r => r.Id == epRid)
                         || epHost.HyperlinkRelationships.Any(r => r.Id == epRid))
-                        return (epRid, parentPartPath);
+                        throw new ArgumentException(
+                            $"add-part extpart: rid '{epRid}' already exists as an external/hyperlink relationship on /presentation and cannot be re-homed. Use a different rid.");
                     // Part-rel collision: on a rebuilt deck the scaffold's own
                     // rels (master/slide/presProps…) occupy low rIds, so a
                     // pinned source id like rId2 is usually TAKEN. Skipping
@@ -1783,14 +1790,20 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                     throw new ArgumentException(
                         "add-part extpart: parent must be /presentation, /slide[N], /slideLayout[N], or /slideMaster[N]");
 
-                // External/hyperlink-rel collision: keep the idempotent skip (can't
-                // re-home a non-part relationship). Part collision (scaffold layout
-                // rel occupying rId3..rId5 on the master): re-home it so the pinned
-                // id is free — otherwise the extpart silently skips and the hdphoto
-                // r:embed dangles. Mirrors the add-part image collision path.
+                // External/hyperlink-rel collision: a non-part relationship
+                // can't be re-homed by ChangeIdOfPart, and the old idempotent
+                // skip reported success while dropping the binary part. Fail
+                // loudly instead (atomic batch rolls the file back).
+                // Unreachable from a self-produced dump — both carriers pin
+                // ids from the same source rels, so they never collide.
+                // Part collision (scaffold layout rel occupying rId3..rId5 on
+                // the master): re-home it so the pinned id is free — otherwise
+                // the extpart silently skips and the hdphoto r:embed dangles.
+                // Mirrors the add-part image collision path.
                 if (epHost.ExternalRelationships.Any(r => r.Id == epRid)
                     || epHost.HyperlinkRelationships.Any(r => r.Id == epRid))
-                    return (epRid, parentPartPath);
+                    throw new ArgumentException(
+                        $"add-part extpart: rid '{epRid}' already exists as an external/hyperlink relationship on {parentPartPath} and cannot be re-homed. Use a different rid.");
                 ReHomeCollidingRel(epHost, epRid);
                 var epPart = epHost.AddExtendedPart(epRelType, epContentType, epExt, epRid);
                 using (var epStream = new MemoryStream(epBytes))

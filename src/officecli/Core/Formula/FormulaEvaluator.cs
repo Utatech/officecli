@@ -731,7 +731,10 @@ internal partial class FormulaEvaluator
         var left = ParseAddSub(t, ref p); if (left == null) return null;
         while (p < t.Count && t[p].Type == TT.Op && t[p].Value == "&")
         { p++; var right = ParseAddSub(t, ref p); if (right == null) return null;
-          if (left.IsError) return left; if (right.IsError) return right;
+          // An error propagates, but the rest of the operator chain must still be
+          // consumed or the top-level "all tokens parsed" check fails and turns
+          // the error into a NOTEVAL. Keep the leftmost error and keep scanning.
+          if (left.IsError) continue; if (right.IsError) { left = right; continue; }
           left = FormulaResult.Str(left.AsString() + right.AsString()); }
         return left;
         }
@@ -743,7 +746,7 @@ internal partial class FormulaEvaluator
         var left = ParseMulDiv(t, ref p); if (left == null) return null;
         while (p < t.Count && t[p].Type == TT.Op && t[p].Value is "+" or "-")
         { var op = t[p].Value; p++; var r = ParseMulDiv(t, ref p); if (r == null) return null;
-          if (left.IsError) return left; if (r.IsError) return r;
+          if (left.IsError) continue; if (r.IsError) { left = r; continue; }
           left = ApplyBinaryOp(left, r, op == "+" ? (a, b) => a + b : (a, b) => a - b); }
         return left;
     }
@@ -753,12 +756,12 @@ internal partial class FormulaEvaluator
         var left = ParsePower(t, ref p); if (left == null) return null;
         while (p < t.Count && t[p].Type == TT.Op && t[p].Value is "*" or "/")
         { var op = t[p].Value; p++; var r = ParsePower(t, ref p); if (r == null) return null;
-          if (left.IsError) return left; if (r.IsError) return r;
+          if (left.IsError) continue; if (r.IsError) { left = r; continue; }
           if (op == "/")
           {
               // Scalar-only div-by-zero gate. For array divisors, any zero produces
               // +Inf rather than #DIV/0! — acceptable degradation; tighten if needed.
-              if (!HasArrayShape(r) && r.AsNumber() == 0) return FormulaResult.Error("#DIV/0!");
+              if (!HasArrayShape(r) && r.AsNumber() == 0) { left = FormulaResult.Error("#DIV/0!"); continue; }
               left = ApplyBinaryOp(left, r, (a, b) => b == 0 ? double.PositiveInfinity : a / b);
           }
           else
@@ -772,7 +775,7 @@ internal partial class FormulaEvaluator
         var b = ParseUnary(t, ref p); if (b == null) return null;
         while (p < t.Count && t[p].Type == TT.Op && t[p].Value == "^")
         { p++; var e = ParseUnary(t, ref p); if (e == null) return null;
-          if (b.IsError) return b; if (e.IsError) return e;
+          if (b.IsError) continue; if (e.IsError) { b = e; continue; }
           b = ApplyBinaryOp(b, e, Math.Pow); }
         return b;
     }

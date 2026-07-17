@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace OfficeCli.Core;
 
@@ -245,6 +246,7 @@ internal partial class FormulaEvaluator
         int rows = g.GetLength(0), cols = g.GetLength(1);
         var rIdx = SliceIndices(rows, OptInt(args, 1), take: true);
         var cIdx = SliceIndices(cols, OptInt(args, 2), take: true);
+        if (rIdx.Count == 0 || cIdx.Count == 0) return FormulaResult.Error("#CALC!");   // TAKE(...,0) has no result
         return MakeArea(PickRC(g, rIdx, cIdx));
     }
 
@@ -398,13 +400,14 @@ internal partial class FormulaEvaluator
         var colDelims = DelimList(args, 1);
         var rowDelims = DelimList(args, 2);
         bool ignoreEmpty = ScalarBool(args, 3, false);
+        bool ignoreCase = (int)Scalar(args, 4, 0) == 1;   // match_mode 1 = case-insensitive
         FormulaResult? pad = args.Count > 5 && args[5] is FormulaResult pf ? pf : FormulaResult.Error("#N/A");
 
         string[] rowParts = rowDelims.Count > 0
-            ? SplitOnAny(text, rowDelims, ignoreEmpty)
+            ? SplitOnAny(text, rowDelims, ignoreEmpty, ignoreCase)
             : new[] { text };
         var rows = rowParts.Select(rp => colDelims.Count > 0
-            ? SplitOnAny(rp, colDelims, ignoreEmpty)
+            ? SplitOnAny(rp, colDelims, ignoreEmpty, ignoreCase)
             : new[] { rp }).ToList();
         int cols = rows.Max(r => r.Length);
         var outc = new FormulaResult?[rows.Count, cols];
@@ -428,9 +431,12 @@ internal partial class FormulaEvaluator
         return list;
     }
 
-    private static string[] SplitOnAny(string s, List<string> delims, bool ignoreEmpty)
+    private static string[] SplitOnAny(string s, List<string> delims, bool ignoreEmpty, bool ignoreCase = false)
     {
-        var parts = s.Split(delims.ToArray(), ignoreEmpty ? StringSplitOptions.RemoveEmptyEntries : StringSplitOptions.None);
+        string[] parts = ignoreCase
+            ? Regex.Split(s, string.Join("|", delims.Select(Regex.Escape)), RegexOptions.IgnoreCase)
+            : s.Split(delims.ToArray(), StringSplitOptions.None);
+        if (ignoreEmpty) parts = parts.Where(p => p.Length > 0).ToArray();
         return parts.Length == 0 ? new[] { "" } : parts;
     }
 

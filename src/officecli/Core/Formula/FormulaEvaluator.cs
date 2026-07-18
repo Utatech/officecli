@@ -758,12 +758,9 @@ internal partial class FormulaEvaluator
         { var op = t[p].Value; p++; var r = ParsePower(t, ref p); if (r == null) return null;
           if (left.IsError) continue; if (r.IsError) { left = r; continue; }
           if (op == "/")
-          {
-              // Scalar-only div-by-zero gate. For array divisors, any zero produces
-              // +Inf rather than #DIV/0! — acceptable degradation; tighten if needed.
-              if (!HasArrayShape(r) && r.AsNumber() == 0) { left = FormulaResult.Error("#DIV/0!"); continue; }
-              left = ApplyBinaryOp(left, r, (a, b) => b == 0 ? double.PositiveInfinity : a / b);
-          }
+              // Division-aware: a zero divisor yields #DIV/0! per cell (scalar and
+              // array alike), matching Excel.
+              left = ApplyBinaryOp(left, r, (a, b) => a / b, isDivision: true);
           else
               left = ApplyBinaryOp(left, r, (a, b) => a * b);
         }
@@ -775,7 +772,7 @@ internal partial class FormulaEvaluator
         var b = ParseUnary(t, ref p); if (b == null) return null;
         while (p < t.Count && t[p].Type == TT.Op && t[p].Value == "^")
         { p++; var e = ParseUnary(t, ref p); if (e == null) return null;
-          if (b.IsError) return b; if (e.IsError) return e;
+          if (b.IsError) continue; if (e.IsError) { b = e; continue; }
           b = ApplyBinaryOp(b, e, ExcelPow); }
         return b;
     }
@@ -785,10 +782,12 @@ internal partial class FormulaEvaluator
     // row-major (empties treated as 0, matching Excel implicit-zero coercion).
     // Length mismatch in array+array uses Min(len) — Excel would emit #N/A, but
     // min-length is more lenient and only affects malformed inputs.
-    private static FormulaResult ApplyBinaryOp(FormulaResult left, FormulaResult right, Func<double, double, double> op)
+    private static FormulaResult ApplyBinaryOp(FormulaResult left, FormulaResult right, Func<double, double, double> op, bool isDivision = false)
     {
-        var la = AsArrayLike(left); var ra = AsArrayLike(right);
-        if (la == null && ra == null)
+        var lg = ToGrid(left); var rg = ToGrid(right);
+        bool lArr = lg != null && (lg.GetLength(0) > 1 || lg.GetLength(1) > 1);
+        bool rArr = rg != null && (rg.GetLength(0) > 1 || rg.GetLength(1) > 1);
+        if (!lArr && !rArr)
         {
             // A scalar text operand that is not numeric-looking (including the
             // empty string) is not coercible for arithmetic — the whole
@@ -796,13 +795,43 @@ internal partial class FormulaEvaluator
             // numeric-looking text still coerce.
             if (!TryCoerceArithmetic(left, out var lv) || !TryCoerceArithmetic(right, out var rv))
                 return FormulaResult.Error("#VALUE!");
+            if (isDivision && rv == 0) return FormulaResult.Error("#DIV/0!");
             return FormulaResult.Number(op(lv, rv));
         }
-        if (la != null && ra == null) { var rn = right.AsNumber(); var o = new double[la.Length]; for (int i = 0; i < la.Length; i++) o[i] = op(la[i], rn); return FormulaResult.Array(o); }
-        if (la == null && ra != null) { var ln = left.AsNumber(); var o = new double[ra.Length]; for (int i = 0; i < ra.Length; i++) o[i] = op(ln, ra[i]); return FormulaResult.Array(o); }
-        var n = Math.Min(la!.Length, ra!.Length); var oo = new double[n];
-        for (int i = 0; i < n; i++) oo[i] = op(la[i], ra[i]);
-        return FormulaResult.Array(oo);
+        // Array operand(s): preserve 2D shape (so orientation and downstream
+        // consumers like TEXTJOIN/ROWS work), broadcasting a scalar or vector
+        // against the result shape and propagating per-cell errors.
+        int rows = Math.Max(lArr ? lg!.GetLength(0) : 1, rArr ? rg!.GetLength(0) : 1);
+        int cols = Math.Max(lArr ? lg!.GetLength(1) : 1, rArr ? rg!.GetLength(1) : 1);
+        var outc = new FormulaResult?[rows, cols];
+        for (int r = 0; r < rows; r++)
+            for (int c = 0; c < cols; c++)
+            {
+                var lc = PickBroadcastCell(lg, lArr, left, r, c);
+                var rc = PickBroadcastCell(rg, rArr, right, r, c);
+                if (lc == null || rc == null) { outc[r, c] = FormulaResult.Error("#N/A"); continue; }
+                if (lc.IsError) { outc[r, c] = lc; continue; }
+                if (rc.IsError) { outc[r, c] = rc; continue; }
+                if (!TryCoerceArithmetic(lc, out var lv) || !TryCoerceArithmetic(rc, out var rv))
+                    outc[r, c] = FormulaResult.Error("#VALUE!");
+                else if (isDivision && rv == 0)
+                    outc[r, c] = FormulaResult.Error("#DIV/0!");
+                else
+                    outc[r, c] = FormulaResult.Number(op(lv, rv));
+            }
+        return FormulaResult.Area(new RangeData(outc));
+    }
+
+    // Broadcast helper: scalar operand → itself everywhere; a row/column vector
+    // stretches along its singleton dimension; a shorter array pads with null
+    // (→ #N/A) beyond its bounds.
+    private static FormulaResult? PickBroadcastCell(FormulaResult?[,]? g, bool isArr, FormulaResult scalar, int r, int c)
+    {
+        if (!isArr) return scalar;
+        int gr = g!.GetLength(0), gc = g.GetLength(1);
+        int rr = gr == 1 ? 0 : r, cc = gc == 1 ? 0 : c;
+        if (rr >= gr || cc >= gc) return null;
+        return g[rr, cc] ?? FormulaResult.Number(0);
     }
 
     private static bool HasArrayShape(FormulaResult r) => r.IsArray || r.IsRange;

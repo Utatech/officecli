@@ -853,10 +853,25 @@ internal partial class FormulaEvaluator
     // Each cell is a number / "string" / TRUE / FALSE. Produces a RangeData
     // wrapped as Area so ApplyBinaryOp and aggregate functions handle it
     // identically to a real range. BaseRow/BaseCol stay 0 (not a workbook reference).
+    // Split an array-constant body on a separator, ignoring separators that sit
+    // inside a double-quoted string element (e.g. the comma in {",",";"}).
+    private static List<string> SplitArrayConstant(string s, char sep)
+    {
+        var parts = new List<string>();
+        bool inStr = false; int start = 0;
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] == '"') inStr = !inStr;
+            else if (s[i] == sep && !inStr) { parts.Add(s[start..i]); start = i + 1; }
+        }
+        parts.Add(s[start..]);
+        return parts;
+    }
+
     private static FormulaResult ParseArrayConstant(string body)
     {
-        var rows = body.Split(';');
-        var rowCells = rows.Select(r => r.Split(',').Select(c => c.Trim()).ToArray()).ToArray();
+        var rows = SplitArrayConstant(body, ';');
+        var rowCells = rows.Select(r => SplitArrayConstant(r, ',').Select(c => c.Trim()).ToArray()).ToArray();
         var cols = rowCells.Max(r => r.Length);
         var cells = new FormulaResult?[rowCells.Length, cols];
         for (int r = 0; r < rowCells.Length; r++)

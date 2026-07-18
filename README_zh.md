@@ -285,8 +285,8 @@ officecli add sales.xlsx '/Sheet1' --type pivottable \
 `merge` 把任意 `.docx` / `.xlsx` / `.pptx` 中的 `{{key}}` 占位符替换为 JSON 数据——段落、表格单元格、形状、页眉页脚、图表标题都支持。智能体一次性设计版式（昂贵），生产代码填充 N 次（廉价、确定、零 token 成本）。避免了"每份报告都从头重生成、产出 N 份版式不一致"的失败模式。
 
 ```bash
-officecli merge invoice-template.docx out-001.docx '{"client":"Acme","total":"$5,200"}'
-officecli merge q4-template.pptx q4-acme.pptx data.json
+officecli merge invoice-template.docx out-001.docx --data '{"client":"Acme","total":"$5,200"}'
+officecli merge q4-template.pptx q4-acme.pptx --data data.json
 ```
 
 #### Dump 往返 —— 从现有文档学习
@@ -424,10 +424,9 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 不确定属性名时，用分层帮助查询：
 
 ```bash
-officecli pptx set              # 全部可设置元素与属性
-officecli pptx set shape        # 某一类元素的详细说明
-officecli pptx set shape.fill   # 单个属性格式与示例
-officecli docx query            # 选择器说明：属性匹配、:contains、:has() 等
+officecli help pptx set              # 全部可设置元素与属性
+officecli help pptx set shape        # 某一类元素的详细说明
+officecli help docx query            # 选择器说明：属性匹配、:contains、:has() 等
 ```
 
 将 `pptx` 换成 `docx` 或 `xlsx`；动词包括 `view`、`get`、`query`、`set`、`add`、`raw`。
@@ -532,7 +531,7 @@ officecli get report.docx /body --depth 1 --json
 | `close` | 保存并关闭驻留模式 |
 | [`install`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-install) | 安装二进制文件 + 技能文件 + MCP（`all`、`claude`、`cursor` 等） |
 | `config` | 获取或设置配置 |
-| `<format> <command>` | [内置帮助](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference)（如 `officecli pptx set shape`） |
+| `help <format> <command>` | [内置帮助](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference)（如 `officecli help pptx set shape`） |
 
 ## 端到端工作流示例
 
@@ -589,7 +588,7 @@ officecli add budget.xlsx / --type sheet --prop name="Q1 Data"
 officecli import budget.xlsx "/Q1 Data" sales.csv --header
 
 # 模板合并批量生成报告
-officecli merge invoice-template.docx invoice-001.docx '{"client":"Acme","total":"$5,200"}'
+officecli merge invoice-template.docx invoice-001.docx --data '{"client":"Acme","total":"$5,200"}'
 
 # 交付前检查文档质量
 officecli validate report.docx && officecli view report.docx issues --json

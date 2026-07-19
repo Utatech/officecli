@@ -876,6 +876,7 @@ public partial class ExcelHandler
             var inCellAlt = properties.GetValueOrDefault("alt")
                 ?? properties.GetValueOrDefault("altText")
                 ?? properties.GetValueOrDefault("alttext")
+                ?? properties.GetValueOrDefault("description")
                 ?? properties.GetValueOrDefault("image.alt");
             if (inCellAlt != null) Core.ParseHelpers.ValidateXmlText(inCellAlt, "alt");
             SetInCellImage(cell, inCellImg, inCellAlt);

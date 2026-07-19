@@ -775,10 +775,11 @@
     },
     "alt": {
       "type": "string",
-      "description": "Alt text for the in-cell image (rv Text key). Only valid alongside image=. Same aliases as the picture element's alt. Aliases: altText, alttext, image.alt.",
+      "description": "Alt text for the in-cell image (rv Text key). Only valid alongside image=. Same aliases as the picture element's alt. Aliases: altText, alttext, description, image.alt.",
       "aliases": [
         "altText",
         "alttext",
+        "description",
         "image.alt"
       ],
       "add": true,

@@ -580,13 +580,14 @@ public partial class ExcelHandler
                         var imgAlt = properties.GetValueOrDefault("alt")
                             ?? properties.GetValueOrDefault("altText")
                             ?? properties.GetValueOrDefault("alttext")
+                            ?? properties.GetValueOrDefault("description")
                             ?? properties.GetValueOrDefault("image.alt");
                         if (imgAlt != null) Core.ParseHelpers.ValidateXmlText(imgAlt, "alt");
                         SetInCellImage(cell, value, imgAlt);
                     }
                     break;
                 }
-                case "alt" or "alttext" or "image.alt":
+                case "alt" or "alttext" or "description" or "image.alt":
                     // Consumed by the image case above via GetValueOrDefault;
                     // alone it has no target to attach to.
                     if (!properties.Keys.Any(k => k.Equals("image", StringComparison.OrdinalIgnoreCase)))

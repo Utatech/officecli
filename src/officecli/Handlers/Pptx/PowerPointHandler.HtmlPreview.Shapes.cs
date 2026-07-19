@@ -2748,13 +2748,20 @@ public partial class PowerPointHandler
         sb.AppendLine($@"    <script type=""module"">
     let THREE, GLTFLoader;
     try {{
+      // Mirror-first via the importmap (CONSISTENCY(katex-mirror), see Core/ThreeAssets)
       THREE = await import('three');
       ({{ GLTFLoader }} = await import('three/addons/loaders/GLTFLoader.js'));
     }} catch(e) {{
-      // Three.js unavailable (offline) — show fallback image
-      const c = document.getElementById('{canvasId}');
-      if (c) {{ c.style.display='none'; const fb=c.parentElement?.querySelector('.m3d-fallback'); if(fb) fb.style.display='block'; }}
-      throw e; // stop execution of this module
+      try {{
+        // Mirror unreachable — CDN /+esm bypasses the importmap (absolute rewritten imports)
+        THREE = await import('{Core.ThreeAssets.CdnEsmThreeUrl}');
+        ({{ GLTFLoader }} = await import('{Core.ThreeAssets.CdnEsmGltfLoaderUrl}'));
+      }} catch(e2) {{
+        // Three.js unavailable (offline) — show fallback image
+        const c = document.getElementById('{canvasId}');
+        if (c) {{ c.style.display='none'; const fb=c.parentElement?.querySelector('.m3d-fallback'); if(fb) fb.style.display='block'; }}
+        throw e2; // stop execution of this module
+      }}
     }}
     (function() {{
       const canvas = document.getElementById('{canvasId}');
